@@ -8,6 +8,12 @@ export default function RepPage() {
   const [talks, setTalks] = useState(0);
   const [walks, setWalks] = useState(0);
 
+  const alerts = {
+    "Main Office": "🟢 Area recently worked. Light follow-ups only.",
+    "North Location": "🟡 Area aging. Prioritize this territory.",
+    "South Location": "🔴 Area stale. High priority for knocking.",
+  };
+
   return (
     <main>
       <h1>Rep Dashboard</h1>
@@ -26,7 +32,10 @@ export default function RepPage() {
         </label>
       </div>
 
-      <p>Logging activity for: <strong>{location}</strong></p>
+      <div style={{ marginBottom: 20, padding: 10, background: "#f1f5f9" }}>
+        <strong>Territory Alert:</strong>
+        <p>{alerts[location]}</p>
+      </div>
 
       <div style={{ marginTop: 20 }}>
         <h3>Knocks</h3>
