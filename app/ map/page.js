@@ -1,3 +1,9 @@
+'use client';
+
 export default function MapPage() {
-  return <h1>Map Page</h1>;
+  return (
+    <div style={{ height: '100vh', width: '100%' }}>
+      <h1>Map Loading…</h1>
+    </div>
+  );
 }
