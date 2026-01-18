@@ -1,0 +1,9 @@
+export default function MapPage() {
+  return (
+    <main style={{ padding: 20 }}>
+      <h1>Map Page</h1>
+      <p>If you see this, routing works.</p>
+      <a href="/">Back Home</a>
+    </main>
+  )
+}
