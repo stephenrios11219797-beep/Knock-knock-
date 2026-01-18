@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function RepPage() {
   const [location, setLocation] = useState("Main Office");
@@ -13,6 +13,25 @@ export default function RepPage() {
     "North Location": "🟡 Area aging. Prioritize this territory.",
     "South Location": "🔴 Area stale. High priority for knocking.",
   };
+
+  // Load saved data on page load
+  useEffect(() => {
+    const saved = JSON.parse(localStorage.getItem("repData"));
+    if (saved) {
+      setLocation(saved.location);
+      setKnocks(saved.knocks);
+      setTalks(saved.talks);
+      setWalks(saved.walks);
+    }
+  }, []);
+
+  // Save data whenever something changes
+  useEffect(() => {
+    localStorage.setItem(
+      "repData",
+      JSON.stringify({ location, knocks, talks, walks })
+    );
+  }, [location, knocks, talks, walks]);
 
   return (
     <main>
@@ -56,7 +75,7 @@ export default function RepPage() {
       </div>
 
       <p style={{ marginTop: 30 }}>
-        All entries are manually confirmed.
+        All entries are manually confirmed and saved on this device.
       </p>
     </main>
   );
