@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 
 export default function RepPage() {
+  const [rep, setRep] = useState("Rep 1");
   const [location, setLocation] = useState("Main Office");
   const [knocks, setKnocks] = useState(0);
   const [talks, setTalks] = useState(0);
@@ -14,28 +15,41 @@ export default function RepPage() {
     "South Location": "🔴 Area stale. High priority for knocking.",
   };
 
-  // Load saved data on page load
+  const storageKey = `repData-${rep}`;
+
+  // Load rep-specific data
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("repData"));
+    const saved = JSON.parse(localStorage.getItem(storageKey));
     if (saved) {
       setLocation(saved.location);
       setKnocks(saved.knocks);
       setTalks(saved.talks);
       setWalks(saved.walks);
     }
-  }, []);
+  }, [rep]);
 
-  // Save data whenever something changes
+  // Save rep-specific data
   useEffect(() => {
     localStorage.setItem(
-      "repData",
+      storageKey,
       JSON.stringify({ location, knocks, talks, walks })
     );
-  }, [location, knocks, talks, walks]);
+  }, [rep, location, knocks, talks, walks]);
 
   return (
     <main>
       <h1>Rep Dashboard</h1>
+
+      <div style={{ marginBottom: 20 }}>
+        <label>
+          <strong>Rep Name:</strong>{" "}
+          <select value={rep} onChange={(e) => setRep(e.target.value)}>
+            <option>Rep 1</option>
+            <option>Rep 2</option>
+            <option>Rep 3</option>
+          </select>
+        </label>
+      </div>
 
       <div style={{ marginBottom: 20 }}>
         <label>
@@ -56,26 +70,26 @@ export default function RepPage() {
         <p>{alerts[location]}</p>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div>
         <h3>Knocks</h3>
         <p>{knocks}</p>
         <button onClick={() => setKnocks(knocks + 1)}>Add Knock</button>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div>
         <h3>Talks</h3>
         <p>{talks}</p>
         <button onClick={() => setTalks(talks + 1)}>Add Talk</button>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div>
         <h3>Walks (Roof Walked)</h3>
         <p>{walks}</p>
         <button onClick={() => setWalks(walks + 1)}>Add Walk</button>
       </div>
 
       <p style={{ marginTop: 30 }}>
-        All entries are manually confirmed and saved on this device.
+        Data is saved per rep on this device.
       </p>
     </main>
   );
