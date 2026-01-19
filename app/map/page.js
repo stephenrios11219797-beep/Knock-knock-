@@ -1,3 +1,8 @@
 export default function MapPage() {
-  return <h1>Map route works</h1>;
+  return (
+    <main>
+      <h1>Map Page</h1>
+      <p>If you see this, routing works.</p>
+    </main>
+  );
 }
