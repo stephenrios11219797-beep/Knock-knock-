@@ -1,8 +1,32 @@
 export default function RepDashboard() {
   return (
-    <div>
+    <main style={{ padding: "24px" }}>
       <h1>Rep Dashboard</h1>
-      <p>Knocks • Talks • Walks • No Answer</p>
-    </div>
+
+      <section>
+        <h2>Door-to-Door</h2>
+        <ul>
+          <li>Knocks</li>
+          <li>Talks</li>
+          <li>Walks (Roof Walks)</li>
+          <li>No Answer</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Contingencies</h2>
+        <ul>
+          <li>Homeowner Name</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Contracts</h2>
+        <ul>
+          <li>Homeowner Name</li>
+          <li>Contract Value</li>
+        </ul>
+      </section>
+    </main>
   );
 }
