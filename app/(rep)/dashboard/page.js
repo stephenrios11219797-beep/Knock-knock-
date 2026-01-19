@@ -27,6 +27,16 @@ export default function RepDashboard() {
           <li>Contract Value</li>
         </ul>
       </section>
+
+      <section>
+        <h2>Retail</h2>
+        <ul>
+          <li>Retail Appointments</li>
+          <li>Retail Contracts</li>
+          <li>Retail Contract Value</li>
+          <li>Retail Close Rate</li>
+        </ul>
+      </section>
     </main>
   );
 }
