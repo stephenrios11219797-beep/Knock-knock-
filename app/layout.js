@@ -1,6 +1,6 @@
 import './globals.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import MainNav from '@/components/MainNav'
+import MainNav from '../components/MainNav'
 
 export const metadata = {
   title: 'Knock Knock',
