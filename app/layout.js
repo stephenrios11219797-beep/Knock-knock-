@@ -1,5 +1,6 @@
 import './globals.css'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import MainNav from '@/components/MainNav'
 
 export const metadata = {
   title: 'Knock Knock',
@@ -9,7 +10,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <MainNav />
+        {children}
+      </body>
     </html>
   )
 }
