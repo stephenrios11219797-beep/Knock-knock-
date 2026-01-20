@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -10,85 +11,134 @@ export default function MapClient() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const watchIdRef = useRef(null);
 
-  const [following, setFollowing] = useState(true);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [followUser, setFollowUser] = useState(true);
+  const [error, setError] = useState("");
 
-  // INIT MAP
+  // Initialize map ONCE
   useEffect(() => {
     if (mapRef.current) return;
 
     mapRef.current = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-98.5795, 39.8283],
+      center: [-98.5795, 39.8283], // USA center
       zoom: 4,
     });
-
-    mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-right");
   }, []);
 
-  // GPS TRACKING
-  useEffect(() => {
-    if (!navigator.geolocation || !mapRef.current) return;
+  // Start GPS ONLY after button click (Safari-safe)
+  const enableGPS = () => {
+    if (!navigator.geolocation) {
+      setError("Geolocation not supported");
+      return;
+    }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const lngLat = [longitude, latitude];
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { longitude, latitude } = position.coords;
 
-        // Create marker
         if (!markerRef.current) {
-          markerRef.current = new mapboxgl.Marker({ color: "#2563eb" })
-            .setLngLat(lngLat)
+          markerRef.current = new mapboxgl.Marker({ color: "#007AFF" })
+            .setLngLat([longitude, latitude])
             .addTo(mapRef.current);
         } else {
-          markerRef.current.setLngLat(lngLat);
+          markerRef.current.setLngLat([longitude, latitude]);
         }
 
-        // Follow mode
-        if (following) {
+        if (followUser) {
           mapRef.current.easeTo({
-            center: lngLat,
+            center: [longitude, latitude],
             zoom: 18,
             duration: 500,
           });
         }
       },
-      (err) => {
-        console.error("GPS ERROR:", err);
-        alert("GPS permission denied or unavailable.");
+      () => {
+        setError("GPS permission denied or unavailable");
       },
-      { enableHighAccuracy: true }
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 10000,
+      }
     );
 
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, [following]);
+    setGpsEnabled(true);
+    setError("");
+  };
 
   return (
-    <div style={{ position: "relative", height: "100vh" }}>
+    <div style={{ height: "100vh", width: "100%", position: "relative" }}>
+      {/* TOP CONTROL BAR */}
       <div
-        ref={mapContainerRef}
-        style={{ width: "100%", height: "100%" }}
-      />
-
-      {/* FOLLOW TOGGLE */}
-      <button
-        onClick={() => setFollowing(!following)}
         style={{
           position: "absolute",
-          bottom: 20,
-          right: 20,
+          top: 10,
+          left: 10,
+          right: 10,
           zIndex: 10,
-          padding: "10px 14px",
-          background: following ? "#2563eb" : "#6b7280",
-          color: "white",
-          borderRadius: 8,
-          border: "none",
-          fontWeight: 600,
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
         }}
       >
-        {following ? "Following" : "Free Look"}
-      </button>
+        <Link href="/">
+          <button style={buttonStyle}>Home</button>
+        </Link>
+
+        {!gpsEnabled && (
+          <button style={buttonStyle} onClick={enableGPS}>
+            Enable GPS
+          </button>
+        )}
+
+        {gpsEnabled && (
+          <button
+            style={buttonStyle}
+            onClick={() => setFollowUser((prev) => !prev)}
+          >
+            {followUser ? "Unlock Map" : "Follow Me"}
+          </button>
+        )}
+      </div>
+
+      {/* ERROR MESSAGE */}
+      {error && (
+        <div
+          style={{
+            position: "absolute",
+            top: 60,
+            left: 10,
+            zIndex: 10,
+            background: "rgba(255,0,0,0.85)",
+            color: "#fff",
+            padding: "6px 10px",
+            borderRadius: 6,
+            fontSize: 14,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {/* MAP */}
+      <div
+        ref={mapContainerRef}
+        style={{ height: "100%", width: "100%" }}
+      />
     </div>
   );
 }
+
+const buttonStyle = {
+  padding: "10px 14px",
+  borderRadius: "8px",
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontSize: "14px",
+  cursor: "pointer",
+};
