@@ -1,23 +1,15 @@
-import "./globals.css";
-import Link from "next/link";
+import './globals.css'
+import 'mapbox-gl/dist/mapbox-gl.css'
+
+export const metadata = {
+  title: 'Knock Knock',
+  description: 'Field sales mapping and tracking',
+}
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>
-        <header style={{ padding: "16px", borderBottom: "1px solid #ccc" }}>
-          <Link href="/" style={{ marginRight: 12 }}>
-            Home
-          </Link>
-          <Link href="/map">
-            Map
-          </Link>
-        </header>
-
-        <main style={{ padding: "16px" }}>
-          {children}
-        </main>
-      </body>
+      <body>{children}</body>
     </html>
-  );
+  )
 }
