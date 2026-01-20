@@ -9,49 +9,37 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 export default function MapClient() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markerRef = useRef(null);
   const watchIdRef = useRef(null);
 
   const [followUser, setFollowUser] = useState(true);
 
+  // Initialize map ONCE
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (mapRef.current) return;
 
     mapRef.current = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
+      center: [-86.1581, 39.7684], // fallback (Indianapolis)
       zoom: 16,
     });
 
     mapRef.current.addControl(new mapboxgl.NavigationControl());
-
-    return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      mapRef.current?.remove();
-    };
   }, []);
 
+  // GPS tracking
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!navigator.geolocation || !mapRef.current) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-
-        if (!markerRef.current) {
-          markerRef.current = new mapboxgl.Marker({ color: "#2563eb" })
-            .setLngLat([longitude, latitude])
-            .addTo(mapRef.current);
-        } else {
-          markerRef.current.setLngLat([longitude, latitude]);
-        }
+        const { longitude, latitude } = position.coords;
 
         if (followUser) {
-          mapRef.current.easeTo({
+          mapRef.current.flyTo({
             center: [longitude, latitude],
-            zoom: 16,
+            zoom: 18,
+            speed: 0.8,
           });
         }
       },
@@ -78,7 +66,7 @@ export default function MapClient() {
 
       <button
         onClick={() => setFollowUser((prev) => !prev)}
-        className="absolute bottom-4 right-4 z-10 rounded bg-white px-4 py-2 text-sm font-medium shadow"
+        className="absolute bottom-4 right-4 z-10 rounded bg-black px-4 py-2 text-white shadow"
       >
         {followUser ? "Disable Follow" : "Follow Me"}
       </button>
