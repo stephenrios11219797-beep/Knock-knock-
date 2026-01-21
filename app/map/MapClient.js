@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -15,72 +14,89 @@ export default function MapClient() {
 
   const [isFollowing, setIsFollowing] = useState(true);
 
-  // Initialize map
+  // -------------------------------
+  // INIT MAP
+  // -------------------------------
   useEffect(() => {
     if (mapRef.current) return;
 
-    mapRef.current = new mapboxgl.Map({
+    const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-97.7431, 30.2672], // fallback
+      center: [-97.7431, 30.2672],
       zoom: 15,
     });
 
-    return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-    };
+    // Dragging disables follow (FREE LOOK FIX)
+    map.on("dragstart", () => {
+      setIsFollowing(false);
+    });
+
+    mapRef.current = map;
   }, []);
 
-  // GPS REQUEST (button press)
+  // -------------------------------
+  // GPS WATCH (REAL FOLLOW MODE)
+  // -------------------------------
   function requestGPS() {
     if (!navigator.geolocation) {
       alert("GPS not supported on this device");
       return;
     }
 
-    if (watchIdRef.current) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-    }
+    // Prevent duplicate watchers
+    if (watchIdRef.current !== null) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         const lngLat = [longitude, latitude];
 
-        // Create dot if missing
+        // Create or move user dot
         if (!userMarkerRef.current) {
-          const dot = document.createElement("div");
-          dot.style.width = "12px";
-          dot.style.height = "12px";
-          dot.style.borderRadius = "50%";
-          dot.style.backgroundColor = "#2563eb";
-          dot.style.boxShadow = "0 0 8px rgba(37,99,235,0.6)";
-
-          userMarkerRef.current = new mapboxgl.Marker(dot)
+          userMarkerRef.current = new mapboxgl.Marker({
+            color: "#2563eb",
+          })
             .setLngLat(lngLat)
             .addTo(mapRef.current);
         } else {
           userMarkerRef.current.setLngLat(lngLat);
         }
 
-        // ONLY recenter if following is ON
-        if (isFollowing === true) {
-          mapRef.current.flyTo({
+        // ONLY recenter when following
+        if (isFollowing) {
+          mapRef.current.easeTo({
             center: lngLat,
             zoom: 17,
-            essential: true,
+            duration: 500,
           });
         }
       },
       () => {
         alert("Location permission denied");
       },
-      {
-        enableHighAccuracy: true,
-      }
+      { enableHighAccuracy: true }
     );
+  }
+
+  function toggleFollow() {
+    setIsFollowing((prev) => !prev);
+  }
+
+  // Cleanup GPS watcher
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  // -------------------------------
+  // LOG HOUSE ACTION (PLACEHOLDER)
+  // -------------------------------
+  function logHouse() {
+    alert("Log House (next step: capture GPS + form)");
   }
 
   return (
@@ -88,7 +104,7 @@ export default function MapClient() {
       <MainNav
         onRequestGPS={requestGPS}
         isFollowing={isFollowing}
-        onToggleFollow={() => setIsFollowing((prev) => !prev)}
+        onToggleFollow={toggleFollow}
       />
 
       {/* MAP */}
@@ -96,7 +112,7 @@ export default function MapClient() {
         ref={mapContainerRef}
         style={{
           position: "absolute",
-          top: "56px", // leaves space for nav
+          top: 0,
           bottom: 0,
           width: "100%",
         }}
@@ -104,23 +120,23 @@ export default function MapClient() {
 
       {/* FLOATING LOG HOUSE BUTTON */}
       <button
+        onClick={logHouse}
         style={{
           position: "fixed",
-          bottom: "20px",
-          right: "20px",
+          bottom: "90px", // ABOVE Safari URL bar
+          right: "16px",
           padding: "14px 16px",
-          borderRadius: "50%",
-          backgroundColor: "#2563eb",
-          color: "#fff",
-          fontSize: "18px",
-          fontWeight: "600",
+          borderRadius: "999px",
           border: "none",
-          boxShadow: "0 6px 18px rgba(0,0,0,0.25)",
-          zIndex: 1000,
+          background: "#2563eb",
+          color: "#fff",
+          fontSize: "15px",
+          fontWeight: "600",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          zIndex: 1001,
         }}
-        onClick={() => alert("Log house flow coming next")}
       >
-        +
+        + Log House
       </button>
     </>
   );
