@@ -101,23 +101,27 @@ export default function MapPage() {
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+      <div
+        ref={mapContainerRef}
+        style={{ height: "100%", width: "100%" }}
+      />
 
-      {/* HOME BUTTON (FIXED TAP AREA) */}
+      {/* TOP LEFT — HOME (SAFARI SAFE) */}
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           top: "env(safe-area-inset-top)",
-          left: 12,
-          marginTop: 12,
-          zIndex: 20,
-          width: "auto",
+          left: 0,
+          zIndex: 50,
+          pointerEvents: "none", // 🔑 CRITICAL
         }}
       >
         <Link
           href="/"
           style={{
+            pointerEvents: "auto", // 🔑 ONLY BUTTON RECEIVES TOUCH
             display: "inline-block",
+            margin: 12,
             padding: "8px 12px",
             background: "white",
             borderRadius: 8,
@@ -130,26 +134,33 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* GPS CONTROLS */}
+      {/* TOP RIGHT — GPS CONTROLS */}
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           top: "env(safe-area-inset-top)",
-          right: 12,
-          marginTop: 12,
-          display: "flex",
-          gap: 8,
-          zIndex: 20,
+          right: 0,
+          zIndex: 50,
+          pointerEvents: "none", // 🔑
         }}
       >
-        {!gpsEnabled && (
-          <button onClick={enableGPS}>Enable GPS</button>
-        )}
-        {gpsEnabled && (
-          <button onClick={() => setFollow(!follow)}>
-            {follow ? "Following" : "Free Look"}
-          </button>
-        )}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            margin: 12,
+            pointerEvents: "auto", // 🔑
+          }}
+        >
+          {!gpsEnabled && (
+            <button onClick={enableGPS}>Enable GPS</button>
+          )}
+          {gpsEnabled && (
+            <button onClick={() => setFollow(!follow)}>
+              {follow ? "Following" : "Free Look"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
