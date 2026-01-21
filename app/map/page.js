@@ -11,11 +11,13 @@ export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const followRef = useRef(true);
+  const lastCoordsRef = useRef(null);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
 
-  // Initialize map
+  // INIT MAP
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -35,7 +37,14 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring
+      mapRef.current.addSource("logged-houses", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+
       mapRef.current.addLayer({
         id: "accuracy",
         type: "circle",
@@ -47,7 +56,6 @@ export default function MapPage() {
         },
       });
 
-      // User dot
       mapRef.current.addLayer({
         id: "dot",
         type: "circle",
@@ -57,11 +65,24 @@ export default function MapPage() {
           "circle-color": "#2563eb",
         },
       });
-    });
 
-    // 🔑 Disable follow when user manually drags map
-    mapRef.current.on("dragstart", () => {
-      setFollow(false);
+      mapRef.current.addLayer({
+        id: "houses",
+        type: "circle",
+        source: "logged-houses",
+        paint: {
+          "circle-radius": 7,
+          "circle-color": "#16a34a",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+      });
+
+      // Drag disables follow
+      mapRef.current.on("dragstart", () => {
+        followRef.current = false;
+        setFollow(false);
+      });
     });
 
     return () => {
@@ -72,36 +93,33 @@ export default function MapPage() {
     };
   }, []);
 
-  // Enable GPS + live tracking
+  // ENABLE GPS
   const enableGPS = () => {
-    if (!navigator.geolocation) {
-      alert("GPS not supported");
-      return;
-    }
-
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
 
-        const feature = {
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [longitude, latitude],
-          },
-          properties: {
-            accuracy: Math.max(accuracy / 2, 20),
-          },
-        };
+        lastCoordsRef.current = [longitude, latitude];
 
         mapRef.current.getSource("user-location")?.setData({
           type: "FeatureCollection",
-          features: [feature],
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [longitude, latitude],
+              },
+              properties: {
+                accuracy: Math.max(accuracy / 2, 20),
+              },
+            },
+          ],
         });
 
-        if (follow) {
+        if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -111,6 +129,28 @@ export default function MapPage() {
       () => alert("GPS permission denied"),
       { enableHighAccuracy: true }
     );
+  };
+
+  // LOG HOUSE (GPS POSITION)
+  const logHouse = () => {
+    if (!lastCoordsRef.current) {
+      alert("GPS not ready yet");
+      return;
+    }
+
+    const source = mapRef.current.getSource("logged-houses");
+    const data = source._data;
+
+    data.features.push({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: lastCoordsRef.current,
+      },
+      properties: {},
+    });
+
+    source.setData(data);
   };
 
   return (
@@ -131,7 +171,6 @@ export default function MapPage() {
           href="/"
           style={{
             pointerEvents: "auto",
-            display: "inline-block",
             margin: 12,
             padding: "8px 12px",
             background: "white",
@@ -162,11 +201,14 @@ export default function MapPage() {
             pointerEvents: "auto",
           }}
         >
-          {!gpsEnabled && (
-            <button onClick={enableGPS}>Enable GPS</button>
-          )}
+          {!gpsEnabled && <button onClick={enableGPS}>GPS</button>}
           {gpsEnabled && (
-            <button onClick={() => setFollow((f) => !f)}>
+            <button
+              onClick={() => {
+                followRef.current = !follow;
+                setFollow(!follow);
+              }}
+            >
               {follow ? "Following" : "Free Look"}
             </button>
           )}
@@ -175,19 +217,19 @@ export default function MapPage() {
 
       {/* FLOATING LOG HOUSE BUTTON */}
       <button
+        onClick={logHouse}
         style={{
           position: "fixed",
-          bottom: "calc(env(safe-area-inset-bottom) + 20px)",
-          right: 20,
+          bottom: 24,
+          right: 24,
           zIndex: 50,
           padding: "14px 18px",
           borderRadius: 999,
-          background: "#2563eb",
+          background: "#16a34a",
           color: "white",
-          fontWeight: 600,
+          fontWeight: 700,
           border: "none",
         }}
-        onClick={() => alert("Log house (next step)")}
       >
         + Log House
       </button>
