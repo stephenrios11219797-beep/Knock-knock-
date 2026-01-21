@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -10,9 +11,9 @@ export default function MapClient() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const userMarkerRef = useRef(null);
+  const watchIdRef = useRef(null);
 
   const [isFollowing, setIsFollowing] = useState(true);
-  const [lastPosition, setLastPosition] = useState(null);
 
   // Initialize map
   useEffect(() => {
@@ -21,60 +22,65 @@ export default function MapClient() {
     mapRef.current = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-97.7431, 30.2672],
+      center: [-97.7431, 30.2672], // fallback
       zoom: 15,
     });
+
+    return () => {
+      if (watchIdRef.current) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
   }, []);
 
-  // GPS REQUEST HANDLER
+  // GPS REQUEST (button press)
   function requestGPS() {
     if (!navigator.geolocation) {
-      alert("GPS not supported");
+      alert("GPS not supported on this device");
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
+    if (watchIdRef.current) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         const lngLat = [longitude, latitude];
 
-        setLastPosition(lngLat);
-
-        // User dot
+        // Create dot if missing
         if (!userMarkerRef.current) {
-          userMarkerRef.current = new mapboxgl.Marker({
-            color: "#2563eb",
-          })
+          const dot = document.createElement("div");
+          dot.style.width = "12px";
+          dot.style.height = "12px";
+          dot.style.borderRadius = "50%";
+          dot.style.backgroundColor = "#2563eb";
+          dot.style.boxShadow = "0 0 8px rgba(37,99,235,0.6)";
+
+          userMarkerRef.current = new mapboxgl.Marker(dot)
             .setLngLat(lngLat)
             .addTo(mapRef.current);
         } else {
           userMarkerRef.current.setLngLat(lngLat);
         }
 
-        if (isFollowing) {
+        // ONLY recenter if following is ON
+        if (isFollowing === true) {
           mapRef.current.flyTo({
             center: lngLat,
             zoom: 17,
+            essential: true,
           });
         }
       },
-      () => alert("Location permission denied"),
-      { enableHighAccuracy: true }
+      () => {
+        alert("Location permission denied");
+      },
+      {
+        enableHighAccuracy: true,
+      }
     );
-  }
-
-  // LOG HOUSE BUTTON
-  function logHouse() {
-    if (!lastPosition) {
-      alert("Get GPS location first");
-      return;
-    }
-
-    new mapboxgl.Marker({
-      color: "#16a34a", // green = logged house
-    })
-      .setLngLat(lastPosition)
-      .addTo(mapRef.current);
   }
 
   return (
@@ -90,7 +96,7 @@ export default function MapClient() {
         ref={mapContainerRef}
         style={{
           position: "absolute",
-          top: 0,
+          top: "56px", // leaves space for nav
           bottom: 0,
           width: "100%",
         }}
@@ -98,23 +104,23 @@ export default function MapClient() {
 
       {/* FLOATING LOG HOUSE BUTTON */}
       <button
-        onClick={logHouse}
         style={{
           position: "fixed",
-          bottom: "80px",
-          right: "16px",
+          bottom: "20px",
+          right: "20px",
           padding: "14px 16px",
-          borderRadius: "999px",
-          background: "#16a34a",
+          borderRadius: "50%",
+          backgroundColor: "#2563eb",
           color: "#fff",
-          fontSize: "14px",
+          fontSize: "18px",
           fontWeight: "600",
           border: "none",
-          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          boxShadow: "0 6px 18px rgba(0,0,0,0.25)",
           zIndex: 1000,
         }}
+        onClick={() => alert("Log house flow coming next")}
       >
-        Log House
+        +
       </button>
     </>
   );
