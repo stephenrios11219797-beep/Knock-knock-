@@ -8,44 +8,74 @@ import Link from "next/link";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 const STATUS_COLORS = {
-  none: "#9ca3af",        // gray
-  walked: "#22c55e",      // green
-  no_answer: "#ef4444",   // red
-  soft_set: "#eab308",    // yellow
-  contingency: "#a855f7", // purple
-  contract: "#f59e0b",    // gold
+  none: "#9ca3af",
+  walked: "#22c55e",
+  no_answer: "#ef4444",
+  soft_set: "#eab308",
+  contingency: "#a855f7",
+  contract: "#f59e0b",
 };
 
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const logModeRef = useRef(false);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
-
   const [logMode, setLogMode] = useState(false);
   const [pins, setPins] = useState([]);
   const [activePinId, setActivePinId] = useState(null);
 
-  // INIT MAP
+  // INIT MAP (ONCE)
   useEffect(() => {
     if (mapRef.current) return;
 
-    mapRef.current = new mapboxgl.Map({
+    const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 4,
     });
 
-    mapRef.current.on("load", () => {
-      mapRef.current.addSource("pins", {
+    mapRef.current = map;
+
+    map.on("load", () => {
+      // USER LOCATION
+      map.addSource("user-location", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
 
-      mapRef.current.addLayer({
+      map.addLayer({
+        id: "accuracy",
+        type: "circle",
+        source: "user-location",
+        paint: {
+          "circle-radius": ["get", "accuracy"],
+          "circle-color": "#2563eb",
+          "circle-opacity": 0.2,
+        },
+      });
+
+      map.addLayer({
+        id: "user-dot",
+        type: "circle",
+        source: "user-location",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#2563eb",
+        },
+      });
+
+      // HOUSE PINS
+      map.addSource("pins", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
         id: "pins-layer",
         type: "circle",
         source: "pins",
@@ -57,20 +87,24 @@ export default function MapPage() {
         },
       });
 
-      mapRef.current.on("click", (e) => {
-        if (!logMode) return;
+      // MAP CLICK (MANUAL PIN DROP)
+      map.on("click", (e) => {
+        if (!logModeRef.current) return;
 
         const id = Date.now();
 
-        const newPin = {
-          id,
-          lng: e.lngLat.lng,
-          lat: e.lngLat.lat,
-          status: "none",
-        };
+        setPins((prev) => [
+          ...prev,
+          {
+            id,
+            lng: e.lngLat.lng,
+            lat: e.lngLat.lat,
+            status: "none",
+          },
+        ]);
 
-        setPins((prev) => [...prev, newPin]);
         setActivePinId(id);
+        logModeRef.current = false;
         setLogMode(false);
       });
     });
@@ -79,29 +113,26 @@ export default function MapPage() {
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
-      mapRef.current?.remove();
+      map.remove();
     };
-  }, [logMode]);
+  }, []);
 
   // UPDATE PIN SOURCE
   useEffect(() => {
     if (!mapRef.current) return;
 
-    const features = pins.map((p) => ({
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: [p.lng, p.lat],
-      },
-      properties: {
-        id: p.id,
-        color: STATUS_COLORS[p.status],
-      },
-    }));
-
     mapRef.current.getSource("pins")?.setData({
       type: "FeatureCollection",
-      features,
+      features: pins.map((p) => ({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [p.lng, p.lat],
+        },
+        properties: {
+          color: STATUS_COLORS[p.status],
+        },
+      })),
     });
   }, [pins]);
 
@@ -111,9 +142,28 @@ export default function MapPage() {
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude } = pos.coords;
+        const { longitude, latitude, accuracy } = pos.coords;
+
+        mapRef.current
+          ?.getSource("user-location")
+          ?.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [longitude, latitude],
+                },
+                properties: {
+                  accuracy: Math.max(accuracy / 2, 20),
+                },
+              },
+            ],
+          });
+
         if (follow) {
-          mapRef.current?.easeTo({
+          mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
           });
@@ -124,7 +174,6 @@ export default function MapPage() {
     );
   };
 
-  // UPDATE STATUS
   const setStatus = (status) => {
     setPins((prev) =>
       prev.map((p) =>
@@ -140,23 +189,24 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT — HOME */}
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link
-          href="/"
-          style={{
-            padding: "8px 12px",
-            background: "white",
-            borderRadius: 8,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          ← Home
-        </Link>
-      </div>
+      {/* HOME */}
+      <Link
+        href="/"
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 12,
+          padding: "8px 12px",
+          background: "white",
+          borderRadius: 8,
+          fontWeight: 600,
+          zIndex: 50,
+        }}
+      >
+        ← Home
+      </Link>
 
-      {/* TOP RIGHT — GPS */}
+      {/* GPS CONTROLS */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         {!gpsEnabled && <button onClick={enableGPS}>Enable GPS</button>}
         {gpsEnabled && (
@@ -166,9 +216,12 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* LOG HOUSE BUTTON */}
+      {/* LOG HOUSE */}
       <button
-        onClick={() => setLogMode(true)}
+        onClick={() => {
+          logModeRef.current = true;
+          setLogMode(true);
+        }}
         style={{
           position: "fixed",
           bottom: 24,
