@@ -1,37 +1,82 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 
 export default function MainNav() {
   const router = useRouter();
+  const pathname = usePathname();
+  const [follow, setFollow] = useState(true);
+
+  const requestGPSPermission = () => {
+    if (!navigator.geolocation) {
+      alert("GPS not supported on this device");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        alert("GPS permission granted");
+      },
+      () => {
+        alert("GPS permission denied or unavailable");
+      },
+      { enableHighAccuracy: true }
+    );
+  };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 56,
-        background: "#111827",
-        display: "flex",
-        alignItems: "center",
-        padding: "0 16px",
-        zIndex: 20,
-      }}
-    >
+    <nav style={styles.nav}>
       <button
+        style={styles.button(pathname === "/" )}
         onClick={() => router.push("/")}
-        style={{
-          background: "transparent",
-          color: "white",
-          border: "none",
-          fontSize: 16,
-          fontWeight: 600,
-        }}
       >
-        ← Home
+        Home
       </button>
-    </div>
+
+      <button
+        style={styles.button(pathname === "/map")}
+        onClick={() => router.push("/map")}
+      >
+        Map
+      </button>
+
+      <button style={styles.button(false)} onClick={requestGPSPermission}>
+        GPS
+      </button>
+
+      <button
+        style={styles.button(follow)}
+        onClick={() => setFollow(!follow)}
+      >
+        {follow ? "Follow" : "Free"}
+      </button>
+    </nav>
   );
 }
+
+const styles = {
+  nav: {
+    position: "fixed",
+    bottom: "env(safe-area-inset-bottom)",
+    left: 0,
+    right: 0,
+    height: "64px",
+    display: "flex",
+    justifyContent: "space-around",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderTop: "1px solid #ddd",
+    zIndex: 1000,
+    paddingBottom: "env(safe-area-inset-bottom)",
+  },
+  button: (active) => ({
+    padding: "10px 14px",
+    borderRadius: "8px",
+    border: "1px solid #ccc",
+    backgroundColor: active ? "#111" : "#f5f5f5",
+    color: active ? "#fff" : "#000",
+    fontSize: "14px",
+    fontWeight: 600,
+  }),
+};
