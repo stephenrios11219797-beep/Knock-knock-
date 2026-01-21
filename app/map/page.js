@@ -11,15 +11,14 @@ export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
-
-  const followRef = useRef(true); // 🔑 critical Safari fix
+  const followRef = useRef(true);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [loggingMode, setLoggingMode] = useState(false);
   const [pins, setPins] = useState([]);
 
-  /* ================= MAP INIT ================= */
+  /* ================= MAP INIT (ONCE) ================= */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -31,7 +30,6 @@ export default function MapPage() {
     });
 
     mapRef.current.on("load", () => {
-      // USER LOCATION SOURCE
       mapRef.current.addSource("user-location", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -63,15 +61,13 @@ export default function MapPage() {
     mapRef.current.on("click", (e) => {
       if (!loggingMode) return;
 
-      setPins((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          lngLat: [e.lngLat.lng, e.lngLat.lat],
-          status: "unlogged",
-        },
-      ]);
+      const newPin = {
+        id: Date.now() + Math.random(),
+        lngLat: [e.lngLat.lng, e.lngLat.lat],
+        status: "unlogged",
+      };
 
+      setPins((prev) => [...prev, newPin]);
       setLoggingMode(false);
     });
 
@@ -81,7 +77,7 @@ export default function MapPage() {
       }
       mapRef.current?.remove();
     };
-  }, [loggingMode]);
+  }, []); // ✅ DO NOT DEPEND ON loggingMode
 
   /* ================= GPS ================= */
   const enableGPS = () => {
@@ -91,26 +87,25 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
 
-        const feature = {
-          type: "Feature",
-          geometry: {
-            type: "Point",
-            coordinates: [longitude, latitude],
-          },
-          properties: {
-            accuracy: Math.max(accuracy / 2, 20),
-          },
-        };
-
         mapRef.current
           ?.getSource("user-location")
           ?.setData({
             type: "FeatureCollection",
-            features: [feature],
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [longitude, latitude],
+                },
+                properties: {
+                  accuracy: Math.max(accuracy / 2, 20),
+                },
+              },
+            ],
           });
 
-        // 🔑 SAFARI-SAFE FOLLOW CONTROL
-        if (followRef.current === true) {
+        if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -122,44 +117,30 @@ export default function MapPage() {
     );
   };
 
-  /* ================= PIN COLORS ================= */
-  const getColor = (status) => {
-    switch (status) {
-      case "walked":
-        return "green";
-      case "no_answer":
-        return "red";
-      case "soft_set":
-        return "yellow";
-      case "contingency":
-        return "purple";
-      case "contract":
-        return "gold";
-      default:
-        return "gray";
-    }
-  };
+  /* ================= PIN MARKERS ================= */
+  useEffect(() => {
+    if (!mapRef.current) return;
 
-  /* ================= RENDER ================= */
+    pins.forEach((pin) => {
+      if (pin.marker) return;
+
+      const el = document.createElement("div");
+      el.style.width = "12px";
+      el.style.height = "12px";
+      el.style.borderRadius = "50%";
+      el.style.background = "gray";
+
+      pin.marker = new mapboxgl.Marker(el)
+        .setLngLat(pin.lngLat)
+        .addTo(mapRef.current);
+    });
+  }, [pins]);
+
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* PINS */}
-      {pins.map((pin) => (
-        <div
-          key={pin.id}
-          style={{
-            position: "absolute",
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            background: getColor(pin.status),
-          }}
-        />
-      ))}
-
-      {/* TOP LEFT — HOME */}
+      {/* HOME */}
       <div
         style={{
           position: "fixed",
@@ -185,7 +166,7 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* TOP RIGHT — GPS / FOLLOW */}
+      {/* GPS / FOLLOW */}
       <div
         style={{
           position: "fixed",
@@ -195,14 +176,7 @@ export default function MapPage() {
           pointerEvents: "none",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            margin: 12,
-            pointerEvents: "auto",
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, margin: 12, pointerEvents: "auto" }}>
           {!gpsEnabled && <button onClick={enableGPS}>Enable GPS</button>}
           {gpsEnabled && (
             <button
@@ -219,7 +193,7 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* LOG HOUSE BUTTON */}
+      {/* LOG HOUSE */}
       <button
         onClick={() => setLoggingMode(true)}
         style={{
@@ -227,7 +201,7 @@ export default function MapPage() {
           bottom: 24,
           right: 24,
           padding: "14px 16px",
-          borderRadius: "999px",
+          borderRadius: 999,
           background: "#2563eb",
           color: "white",
           fontWeight: 600,
