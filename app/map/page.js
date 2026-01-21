@@ -8,26 +8,26 @@ import Link from "next/link";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 const STATUS_COLORS = {
-  none: "#6b7280",        // gray
-  walked: "#16a34a",      // green
-  no_answer: "#dc2626",   // red
-  soft_set: "#facc15",   // yellow
-  contingency: "#7c3aed",// purple
-  contract: "#f59e0b",   // gold
+  none: "#6b7280",
+  walked: "#16a34a",
+  no_answer: "#dc2626",
+  soft_set: "#facc15",
+  contingency: "#7c3aed",
+  contract: "#f59e0b",
 };
 
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
-
   const pinRef = useRef(null);
   const followRef = useRef(true);
-  const isLoggingRef = useRef(false);
+  const loggingRef = useRef(false);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
+  const [hasPin, setHasPin] = useState(false);
   const [status, setStatus] = useState("none");
 
   /* ---------- MAP INIT ---------- */
@@ -77,16 +77,17 @@ export default function MapPage() {
     });
 
     map.on("click", (e) => {
-      if (!isLoggingRef.current) return;
+      if (!loggingRef.current) return;
 
       if (pinRef.current) pinRef.current.remove();
 
-      // 🔑 CUSTOM HTML PIN (THIS FIXES COLOR ISSUE)
+      // 🔑 TEARDROP PIN (HTML)
       const el = document.createElement("div");
-      el.style.width = "16px";
-      el.style.height = "16px";
-      el.style.borderRadius = "50%";
-      el.style.backgroundColor = STATUS_COLORS.none;
+      el.style.width = "18px";
+      el.style.height = "18px";
+      el.style.background = STATUS_COLORS.none;
+      el.style.borderRadius = "50% 50% 50% 0";
+      el.style.transform = "rotate(-45deg)";
       el.style.border = "2px solid white";
       el.style.boxShadow = "0 0 6px rgba(0,0,0,0.4)";
 
@@ -94,6 +95,7 @@ export default function MapPage() {
         .setLngLat(e.lngLat)
         .addTo(map);
 
+      setHasPin(true);
       setStatus("none");
     });
 
@@ -146,11 +148,12 @@ export default function MapPage() {
   const toggleLogHouse = () => {
     const next = !isLogging;
     setIsLogging(next);
-    isLoggingRef.current = next;
+    loggingRef.current = next;
 
     if (!next && pinRef.current) {
       pinRef.current.remove();
       pinRef.current = null;
+      setHasPin(false);
     }
   };
 
@@ -158,7 +161,7 @@ export default function MapPage() {
   const selectStatus = (value) => {
     setStatus(value);
     if (pinRef.current) {
-      pinRef.current.getElement().style.backgroundColor =
+      pinRef.current.getElement().style.background =
         STATUS_COLORS[value];
     }
   };
@@ -196,7 +199,7 @@ export default function MapPage() {
       </button>
 
       {/* STATUS SELECTOR */}
-      {isLogging && pinRef.current && (
+      {isLogging && hasPin && (
         <div
           style={{
             position: "fixed",
