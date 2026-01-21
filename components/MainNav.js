@@ -1,82 +1,89 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
-export default function MainNav() {
-  const router = useRouter();
+export default function MainNav({
+  onRequestGPS,
+  isFollowing,
+  onToggleFollow,
+}) {
   const pathname = usePathname();
-  const [follow, setFollow] = useState(true);
+  const router = useRouter();
 
-  const requestGPSPermission = () => {
-    if (!navigator.geolocation) {
-      alert("GPS not supported on this device");
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      () => {
-        alert("GPS permission granted");
-      },
-      () => {
-        alert("GPS permission denied or unavailable");
-      },
-      { enableHighAccuracy: true }
-    );
-  };
+  const isHome = pathname === "/";
+  const isMap = pathname === "/map";
 
   return (
-    <nav style={styles.nav}>
-      <button
-        style={styles.button(pathname === "/" )}
-        onClick={() => router.push("/")}
-      >
-        Home
-      </button>
+    <div style={styles.nav}>
+      {/* LEFT SIDE */}
+      <div style={styles.left}>
+        {isHome && (
+          <button style={styles.primaryBtn} onClick={() => router.push("/map")}>
+            Map
+          </button>
+        )}
 
-      <button
-        style={styles.button(pathname === "/map")}
-        onClick={() => router.push("/map")}
-      >
-        Map
-      </button>
+        {isMap && (
+          <button style={styles.primaryBtn} onClick={() => router.push("/")}>
+            Home
+          </button>
+        )}
+      </div>
 
-      <button style={styles.button(false)} onClick={requestGPSPermission}>
-        GPS
-      </button>
+      {/* RIGHT SIDE (MAP ONLY) */}
+      <div style={styles.right}>
+        {isMap && (
+          <>
+            <button style={styles.smallBtn} onClick={onRequestGPS}>
+              GPS
+            </button>
 
-      <button
-        style={styles.button(follow)}
-        onClick={() => setFollow(!follow)}
-      >
-        {follow ? "Follow" : "Free"}
-      </button>
-    </nav>
+            <button style={styles.smallBtn} onClick={onToggleFollow}>
+              {isFollowing ? "Unlock" : "Follow"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
 const styles = {
   nav: {
     position: "fixed",
-    bottom: "env(safe-area-inset-bottom)",
+    top: 0,
     left: 0,
     right: 0,
-    height: "64px",
+    height: "56px",
     display: "flex",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderTop: "1px solid #ddd",
+    padding: "0 12px",
+    background: "#ffffff",
+    borderBottom: "1px solid #e5e5e5",
     zIndex: 1000,
-    paddingBottom: "env(safe-area-inset-bottom)",
   },
-  button: (active) => ({
-    padding: "10px 14px",
+  left: {
+    display: "flex",
+    gap: "8px",
+  },
+  right: {
+    display: "flex",
+    gap: "8px",
+  },
+  primaryBtn: {
+    padding: "8px 14px",
+    fontSize: "15px",
+    fontWeight: "600",
     borderRadius: "8px",
     border: "1px solid #ccc",
-    backgroundColor: active ? "#111" : "#f5f5f5",
-    color: active ? "#fff" : "#000",
-    fontSize: "14px",
-    fontWeight: 600,
-  }),
+    background: "#f5f5f5",
+  },
+  smallBtn: {
+    padding: "6px 10px",
+    fontSize: "13px",
+    borderRadius: "8px",
+    border: "1px solid #ccc",
+    background: "#f9f9f9",
+  },
 };
