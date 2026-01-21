@@ -7,48 +7,37 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-const STATUS_COLORS = {
-  none: "#9ca3af",
-  walked: "#22c55e",
-  no_answer: "#ef4444",
-  soft_set: "#eab308",
-  contingency: "#a855f7",
-  contract: "#f59e0b",
-};
-
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
-  const logModeRef = useRef(false);
+
+  const followRef = useRef(true); // 🔑 critical Safari fix
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
-  const [logMode, setLogMode] = useState(false);
+  const [loggingMode, setLoggingMode] = useState(false);
   const [pins, setPins] = useState([]);
-  const [activePinId, setActivePinId] = useState(null);
 
-  // INIT MAP (ONCE)
+  /* ================= MAP INIT ================= */
   useEffect(() => {
     if (mapRef.current) return;
 
-    const map = new mapboxgl.Map({
+    mapRef.current = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 4,
     });
 
-    mapRef.current = map;
-
-    map.on("load", () => {
-      // USER LOCATION
-      map.addSource("user-location", {
+    mapRef.current.on("load", () => {
+      // USER LOCATION SOURCE
+      mapRef.current.addSource("user-location", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
 
-      map.addLayer({
+      mapRef.current.addLayer({
         id: "accuracy",
         type: "circle",
         source: "user-location",
@@ -59,8 +48,8 @@ export default function MapPage() {
         },
       });
 
-      map.addLayer({
-        id: "user-dot",
+      mapRef.current.addLayer({
+        id: "dot",
         type: "circle",
         source: "user-location",
         paint: {
@@ -68,75 +57,33 @@ export default function MapPage() {
           "circle-color": "#2563eb",
         },
       });
+    });
 
-      // HOUSE PINS
-      map.addSource("pins", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
+    // MANUAL PIN DROP
+    mapRef.current.on("click", (e) => {
+      if (!loggingMode) return;
 
-      map.addLayer({
-        id: "pins-layer",
-        type: "circle",
-        source: "pins",
-        paint: {
-          "circle-radius": 7,
-          "circle-color": ["get", "color"],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
+      setPins((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          lngLat: [e.lngLat.lng, e.lngLat.lat],
+          status: "unlogged",
         },
-      });
+      ]);
 
-      // MAP CLICK (MANUAL PIN DROP)
-      map.on("click", (e) => {
-        if (!logModeRef.current) return;
-
-        const id = Date.now();
-
-        setPins((prev) => [
-          ...prev,
-          {
-            id,
-            lng: e.lngLat.lng,
-            lat: e.lngLat.lat,
-            status: "none",
-          },
-        ]);
-
-        setActivePinId(id);
-        logModeRef.current = false;
-        setLogMode(false);
-      });
+      setLoggingMode(false);
     });
 
     return () => {
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
-      map.remove();
+      mapRef.current?.remove();
     };
-  }, []);
+  }, [loggingMode]);
 
-  // UPDATE PIN SOURCE
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    mapRef.current.getSource("pins")?.setData({
-      type: "FeatureCollection",
-      features: pins.map((p) => ({
-        type: "Feature",
-        geometry: {
-          type: "Point",
-          coordinates: [p.lng, p.lat],
-        },
-        properties: {
-          color: STATUS_COLORS[p.status],
-        },
-      })),
-    });
-  }, [pins]);
-
-  // GPS
+  /* ================= GPS ================= */
   const enableGPS = () => {
     setGpsEnabled(true);
 
@@ -144,25 +91,26 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
 
+        const feature = {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          properties: {
+            accuracy: Math.max(accuracy / 2, 20),
+          },
+        };
+
         mapRef.current
           ?.getSource("user-location")
           ?.setData({
             type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [longitude, latitude],
-                },
-                properties: {
-                  accuracy: Math.max(accuracy / 2, 20),
-                },
-              },
-            ],
+            features: [feature],
           });
 
-        if (follow) {
+        // 🔑 SAFARI-SAFE FOLLOW CONTROL
+        if (followRef.current === true) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -174,100 +122,120 @@ export default function MapPage() {
     );
   };
 
-  const setStatus = (status) => {
-    setPins((prev) =>
-      prev.map((p) =>
-        p.id === activePinId ? { ...p, status } : p
-      )
-    );
-    setActivePinId(null);
+  /* ================= PIN COLORS ================= */
+  const getColor = (status) => {
+    switch (status) {
+      case "walked":
+        return "green";
+      case "no_answer":
+        return "red";
+      case "soft_set":
+        return "yellow";
+      case "contingency":
+        return "purple";
+      case "contract":
+        return "gold";
+      default:
+        return "gray";
+    }
   };
 
-  const activePin = pins.find((p) => p.id === activePinId);
-
+  /* ================= RENDER ================= */
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME */}
-      <Link
-        href="/"
+      {/* PINS */}
+      {pins.map((pin) => (
+        <div
+          key={pin.id}
+          style={{
+            position: "absolute",
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            background: getColor(pin.status),
+          }}
+        />
+      ))}
+
+      {/* TOP LEFT — HOME */}
+      <div
         style={{
           position: "fixed",
-          top: 12,
-          left: 12,
-          padding: "8px 12px",
-          background: "white",
-          borderRadius: 8,
-          fontWeight: 600,
+          top: "env(safe-area-inset-top)",
+          left: 0,
           zIndex: 50,
+          pointerEvents: "none",
         }}
       >
-        ← Home
-      </Link>
-
-      {/* GPS CONTROLS */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        {!gpsEnabled && <button onClick={enableGPS}>Enable GPS</button>}
-        {gpsEnabled && (
-          <button onClick={() => setFollow((f) => !f)}>
-            {follow ? "Following" : "Free Look"}
-          </button>
-        )}
+        <Link
+          href="/"
+          style={{
+            pointerEvents: "auto",
+            margin: 12,
+            padding: "8px 12px",
+            background: "white",
+            borderRadius: 8,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          ← Home
+        </Link>
       </div>
 
-      {/* LOG HOUSE */}
-      <button
-        onClick={() => {
-          logModeRef.current = true;
-          setLogMode(true);
+      {/* TOP RIGHT — GPS / FOLLOW */}
+      <div
+        style={{
+          position: "fixed",
+          top: "env(safe-area-inset-top)",
+          right: 0,
+          zIndex: 50,
+          pointerEvents: "none",
         }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            margin: 12,
+            pointerEvents: "auto",
+          }}
+        >
+          {!gpsEnabled && <button onClick={enableGPS}>Enable GPS</button>}
+          {gpsEnabled && (
+            <button
+              onClick={() => {
+                setFollow((prev) => {
+                  followRef.current = !prev;
+                  return !prev;
+                });
+              }}
+            >
+              {follow ? "Following" : "Free Look"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* LOG HOUSE BUTTON */}
+      <button
+        onClick={() => setLoggingMode(true)}
         style={{
           position: "fixed",
           bottom: 24,
           right: 24,
-          padding: "14px 18px",
-          borderRadius: 999,
+          padding: "14px 16px",
+          borderRadius: "999px",
           background: "#2563eb",
           color: "white",
           fontWeight: 600,
           zIndex: 50,
         }}
       >
-        {logMode ? "Tap Map…" : "Log House"}
+        Log House
       </button>
-
-      {/* STATUS SELECTOR */}
-      {activePin && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 12,
-            borderRadius: 12,
-            display: "flex",
-            gap: 8,
-            zIndex: 50,
-          }}
-        >
-          {Object.keys(STATUS_COLORS).map((key) => (
-            <button
-              key={key}
-              onClick={() => setStatus(key)}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: STATUS_COLORS[key],
-                border: "2px solid #00000020",
-              }}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
