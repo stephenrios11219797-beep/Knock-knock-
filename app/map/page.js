@@ -7,21 +7,22 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-const STATUS_COLORS = {
-  walked: "#22c55e",
-  no_answer: "#ef4444",
-  soft_set: "#eab308",
-  contingency: "#a855f7",
-  contract: "#f59e0b",
-};
+const STATUS_OPTIONS = [
+  { key: "walked", label: "Walked", color: "#22c55e" },
+  { key: "no_answer", label: "No Answer", color: "#ef4444" },
+  { key: "soft_set", label: "Soft Set", color: "#06b6d4" }, // teal
+  { key: "contingency", label: "Contingency", color: "#a855f7" },
+  { key: "contract", label: "Contract", color: "#f59e0b" },
+];
 
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
 
+  const userMarkerRef = useRef(null);
   const draftPinRef = useRef(null);
-  const logModeRef = useRef(false); // 🔑 NOT STATE
+  const logModeRef = useRef(false);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
@@ -41,13 +42,9 @@ export default function MapPage() {
     mapRef.current.on("click", (e) => {
       if (!logModeRef.current) return;
 
-      if (draftPinRef.current) {
-        draftPinRef.current.remove();
-      }
+      draftPinRef.current?.remove();
 
-      draftPinRef.current = new mapboxgl.Marker({
-        color: "#9ca3af", // gray draft
-      })
+      draftPinRef.current = new mapboxgl.Marker({ color: "#9ca3af" })
         .setLngLat(e.lngLat)
         .addTo(mapRef.current);
 
@@ -71,6 +68,18 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
+        // USER DOT
+        if (!userMarkerRef.current) {
+          userMarkerRef.current = new mapboxgl.Marker({
+            color: "#2563eb",
+          })
+            .setLngLat([longitude, latitude])
+            .addTo(mapRef.current);
+        } else {
+          userMarkerRef.current.setLngLat([longitude, latitude]);
+        }
+
+        // 🔑 FOLLOW HARD-GATE
         if (follow) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
@@ -112,20 +121,17 @@ export default function MapPage() {
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      {/* MAP — NEVER RERENDERS */}
-      <div
-        ref={mapContainerRef}
-        style={{ height: "100%", width: "100%" }}
-      />
+      {/* MAP */}
+      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT — HOME */}
+      {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link
           href="/"
           style={{
-            padding: "8px 12px",
+            padding: "10px 14px",
             background: "white",
-            borderRadius: 8,
+            borderRadius: 10,
             fontWeight: 600,
             textDecoration: "none",
           }}
@@ -134,19 +140,32 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* TOP RIGHT — GPS / FREE LOOK */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+      {/* RIGHT CONTROLS — BIG BUTTONS */}
+      <div
+        style={{
+          position: "fixed",
+          right: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          zIndex: 50,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
         {!gpsEnabled && (
-          <button onClick={enableGPS}>Enable GPS</button>
+          <button style={bigBtn} onClick={enableGPS}>
+            Enable GPS
+          </button>
         )}
         {gpsEnabled && (
-          <button onClick={() => setFollow((v) => !v)}>
+          <button style={bigBtn} onClick={() => setFollow((v) => !v)}>
             {follow ? "Following" : "Free Look"}
           </button>
         )}
       </div>
 
-      {/* BOTTOM — LOG HOUSE (STABLE BUTTON) */}
+      {/* LOG HOUSE */}
       <div
         style={{
           position: "fixed",
@@ -155,16 +174,20 @@ export default function MapPage() {
           transform: "translateX(-50%)",
           zIndex: 50,
           display: "flex",
-          gap: 10,
+          gap: 12,
         }}
       >
-        <button onClick={startLogHouse}>Log House</button>
+        <button style={bigBtn} onClick={startLogHouse}>
+          Log House
+        </button>
         {logModeRef.current && (
-          <button onClick={cancelLogHouse}>Cancel</button>
+          <button style={bigBtn} onClick={cancelLogHouse}>
+            Cancel
+          </button>
         )}
       </div>
 
-      {/* STATUS PICKER — VISIBILITY ONLY */}
+      {/* STATUS PICKER */}
       <div
         style={{
           position: "fixed",
@@ -172,27 +195,50 @@ export default function MapPage() {
           left: "50%",
           transform: "translateX(-50%)",
           background: "white",
-          padding: 12,
-          borderRadius: 10,
+          padding: 14,
+          borderRadius: 14,
           display: showStatusPicker ? "flex" : "none",
+          flexDirection: "column",
           gap: 10,
           zIndex: 60,
         }}
       >
-        {Object.entries(STATUS_COLORS).map(([key, color]) => (
+        {STATUS_OPTIONS.map((opt) => (
           <button
-            key={key}
-            onClick={() => savePin(color)}
+            key={opt.key}
+            onClick={() => savePin(opt.color)}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              background: color,
-              border: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
             }}
-          />
+          >
+            <span
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                background: opt.color,
+              }}
+            />
+            {opt.label}
+          </button>
         ))}
       </div>
     </div>
   );
 }
+
+/* ---------------- STYLES ---------------- */
+const bigBtn = {
+  padding: "12px 16px",
+  fontSize: 15,
+  fontWeight: 600,
+  borderRadius: 12,
+  background: "white",
+  border: "1px solid #ddd",
+};
