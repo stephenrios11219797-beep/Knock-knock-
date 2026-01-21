@@ -9,13 +9,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="h-screen w-full overflow-hidden">
-        {/* App Content */}
-        <div className="h-full w-full pb-16">
+        <div className="h-full w-full">
           {children}
         </div>
-
-        {/* Bottom Navigation */}
-        <MainNav />
       </body>
     </html>
   );
