@@ -15,6 +15,7 @@ export default function MapPage() {
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
 
+  // Initialize map
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -34,6 +35,7 @@ export default function MapPage() {
         },
       });
 
+      // Accuracy ring
       mapRef.current.addLayer({
         id: "accuracy",
         type: "circle",
@@ -45,6 +47,7 @@ export default function MapPage() {
         },
       });
 
+      // User dot
       mapRef.current.addLayer({
         id: "dot",
         type: "circle",
@@ -56,6 +59,11 @@ export default function MapPage() {
       });
     });
 
+    // 🔑 Disable follow when user manually drags map
+    mapRef.current.on("dragstart", () => {
+      setFollow(false);
+    });
+
     return () => {
       if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -64,7 +72,13 @@ export default function MapPage() {
     };
   }, []);
 
+  // Enable GPS + live tracking
   const enableGPS = () => {
+    if (!navigator.geolocation) {
+      alert("GPS not supported");
+      return;
+    }
+
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -101,25 +115,22 @@ export default function MapPage() {
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div
-        ref={mapContainerRef}
-        style={{ height: "100%", width: "100%" }}
-      />
+      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT — HOME (SAFARI SAFE) */}
+      {/* TOP LEFT — HOME */}
       <div
         style={{
           position: "fixed",
           top: "env(safe-area-inset-top)",
           left: 0,
           zIndex: 50,
-          pointerEvents: "none", // 🔑 CRITICAL
+          pointerEvents: "none",
         }}
       >
         <Link
           href="/"
           style={{
-            pointerEvents: "auto", // 🔑 ONLY BUTTON RECEIVES TOUCH
+            pointerEvents: "auto",
             display: "inline-block",
             margin: 12,
             padding: "8px 12px",
@@ -127,21 +138,20 @@ export default function MapPage() {
             borderRadius: 8,
             fontWeight: 600,
             textDecoration: "none",
-            whiteSpace: "nowrap",
           }}
         >
           ← Home
         </Link>
       </div>
 
-      {/* TOP RIGHT — GPS CONTROLS */}
+      {/* TOP RIGHT — GPS / FOLLOW */}
       <div
         style={{
           position: "fixed",
           top: "env(safe-area-inset-top)",
           right: 0,
           zIndex: 50,
-          pointerEvents: "none", // 🔑
+          pointerEvents: "none",
         }}
       >
         <div
@@ -149,19 +159,38 @@ export default function MapPage() {
             display: "flex",
             gap: 8,
             margin: 12,
-            pointerEvents: "auto", // 🔑
+            pointerEvents: "auto",
           }}
         >
           {!gpsEnabled && (
             <button onClick={enableGPS}>Enable GPS</button>
           )}
           {gpsEnabled && (
-            <button onClick={() => setFollow(!follow)}>
+            <button onClick={() => setFollow((f) => !f)}>
               {follow ? "Following" : "Free Look"}
             </button>
           )}
         </div>
       </div>
+
+      {/* FLOATING LOG HOUSE BUTTON */}
+      <button
+        style={{
+          position: "fixed",
+          bottom: "calc(env(safe-area-inset-bottom) + 20px)",
+          right: 20,
+          zIndex: 50,
+          padding: "14px 18px",
+          borderRadius: 999,
+          background: "#2563eb",
+          color: "white",
+          fontWeight: 600,
+          border: "none",
+        }}
+        onClick={() => alert("Log house (next step)")}
+      >
+        + Log House
+      </button>
     </div>
   );
 }
