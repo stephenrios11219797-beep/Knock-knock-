@@ -14,12 +14,13 @@ export default function MapPage() {
 
   const tempPinRef = useRef(null);
   const isLoggingRef = useRef(false);
+  const followRef = useRef(true); // 🔑 SOURCE OF TRUTH
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
 
-  /* ---------- MAP INIT (RUNS ONCE) ---------- */
+  /* ---------- MAP INIT (ONCE) ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -60,19 +61,19 @@ export default function MapPage() {
       });
     });
 
-    // Auto free-look when user drags
-    map.on("dragstart", () => setFollow(false));
+    // 🔑 USER INTERACTION = FREE LOOK
+    map.on("dragstart", () => {
+      followRef.current = false;
+      setFollow(false);
+    });
 
-    // Manual pin drop (SAFE)
     map.on("click", (e) => {
       if (!isLoggingRef.current) return;
 
-      if (tempPinRef.current) {
-        tempPinRef.current.remove();
-      }
+      if (tempPinRef.current) tempPinRef.current.remove();
 
       tempPinRef.current = new mapboxgl.Marker({
-        color: "#6b7280", // gray
+        color: "#6b7280", // gray (unlogged)
       })
         .setLngLat(e.lngLat)
         .addTo(map);
@@ -105,7 +106,8 @@ export default function MapPage() {
           ],
         });
 
-        if (follow) {
+        // 🔑 ONLY CENTER IF FOLLOW IS TRUE
+        if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -117,7 +119,14 @@ export default function MapPage() {
     );
   };
 
-  /* ---------- LOG HOUSE TOGGLE ---------- */
+  /* ---------- FOLLOW TOGGLE ---------- */
+  const toggleFollow = () => {
+    const next = !followRef.current;
+    followRef.current = next;
+    setFollow(next);
+  };
+
+  /* ---------- LOG HOUSE ---------- */
   const toggleLogHouse = () => {
     const next = !isLogging;
     setIsLogging(next);
@@ -142,7 +151,7 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT */}
+      {/* HOME */}
       <div
         style={{
           position: "fixed",
@@ -168,7 +177,7 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* TOP RIGHT */}
+      {/* GPS / FOLLOW */}
       <div
         style={{
           position: "fixed",
@@ -188,7 +197,7 @@ export default function MapPage() {
         >
           {!gpsEnabled && <button onClick={enableGPS}>GPS</button>}
           {gpsEnabled && (
-            <button onClick={() => setFollow((f) => !f)}>
+            <button onClick={toggleFollow}>
               {follow ? "Following" : "Free Look"}
             </button>
           )}
