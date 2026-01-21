@@ -81,9 +81,16 @@ export default function MapPage() {
 
       if (pinRef.current) pinRef.current.remove();
 
-      pinRef.current = new mapboxgl.Marker({
-        color: STATUS_COLORS.none,
-      })
+      // 🔑 CUSTOM HTML PIN (THIS FIXES COLOR ISSUE)
+      const el = document.createElement("div");
+      el.style.width = "16px";
+      el.style.height = "16px";
+      el.style.borderRadius = "50%";
+      el.style.backgroundColor = STATUS_COLORS.none;
+      el.style.border = "2px solid white";
+      el.style.boxShadow = "0 0 6px rgba(0,0,0,0.4)";
+
+      pinRef.current = new mapboxgl.Marker(el)
         .setLngLat(e.lngLat)
         .addTo(map);
 
