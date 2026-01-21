@@ -10,7 +10,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const STATUS_OPTIONS = [
   { key: "walked", label: "Walked", color: "#22c55e" },
   { key: "no_answer", label: "No Answer", color: "#ef4444" },
-  { key: "soft_set", label: "Soft Set", color: "#06b6d4" }, // teal
+  { key: "soft_set", label: "Soft Set", color: "#06b6d4" },
   { key: "contingency", label: "Contingency", color: "#a855f7" },
   { key: "contract", label: "Contract", color: "#f59e0b" },
 ];
@@ -22,10 +22,10 @@ export default function MapPage() {
 
   const userMarkerRef = useRef(null);
   const draftPinRef = useRef(null);
-  const logModeRef = useRef(false);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
+  const [logMode, setLogMode] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
 
   /* ---------------- MAP INIT ---------------- */
@@ -40,7 +40,7 @@ export default function MapPage() {
     });
 
     mapRef.current.on("click", (e) => {
-      if (!logModeRef.current) return;
+      if (!logMode) return;
 
       draftPinRef.current?.remove();
 
@@ -56,7 +56,7 @@ export default function MapPage() {
         navigator.geolocation.clearWatch(watchIdRef.current);
       mapRef.current?.remove();
     };
-  }, []);
+  }, [logMode]);
 
   /* ---------------- GPS ---------------- */
   const enableGPS = () => {
@@ -68,7 +68,6 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
-        // USER DOT
         if (!userMarkerRef.current) {
           userMarkerRef.current = new mapboxgl.Marker({
             color: "#2563eb",
@@ -79,11 +78,13 @@ export default function MapPage() {
           userMarkerRef.current.setLngLat([longitude, latitude]);
         }
 
-        // 🔑 FOLLOW HARD-GATE
+        // 🔑 HARD STOP FOLLOW WHEN FREE LOOK
         if (follow) {
+          mapRef.current.stop(); // cancel any active animation
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
+            duration: 500,
           });
         }
       },
@@ -92,15 +93,26 @@ export default function MapPage() {
     );
   };
 
+  /* ---------------- FREE LOOK TOGGLE ---------------- */
+  const toggleFollow = () => {
+    setFollow((prev) => {
+      if (prev === true) {
+        mapRef.current?.stop(); // 🔑 stop snap-back immediately
+      }
+      return !prev;
+    });
+  };
+
   /* ---------------- LOG HOUSE ---------------- */
   const startLogHouse = () => {
-    logModeRef.current = true;
+    setLogMode(true);
+    setShowStatusPicker(false);
   };
 
   const cancelLogHouse = () => {
     draftPinRef.current?.remove();
     draftPinRef.current = null;
-    logModeRef.current = false;
+    setLogMode(false);
     setShowStatusPicker(false);
   };
 
@@ -115,51 +127,30 @@ export default function MapPage() {
       .addTo(mapRef.current);
 
     draftPinRef.current = null;
-    logModeRef.current = false;
+    setLogMode(false);
     setShowStatusPicker(false);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      {/* MAP */}
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link
-          href="/"
-          style={{
-            padding: "10px 14px",
-            background: "white",
-            borderRadius: 10,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
+        <Link href="/" style={btnStyle}>
           ← Home
         </Link>
       </div>
 
-      {/* RIGHT CONTROLS — BIG BUTTONS */}
-      <div
-        style={{
-          position: "fixed",
-          right: 12,
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 50,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
+      {/* GPS + FOLLOW (UNCHANGED POSITION / SIZE) */}
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         {!gpsEnabled && (
-          <button style={bigBtn} onClick={enableGPS}>
+          <button style={btnStyle} onClick={enableGPS}>
             Enable GPS
           </button>
         )}
         {gpsEnabled && (
-          <button style={bigBtn} onClick={() => setFollow((v) => !v)}>
+          <button style={btnStyle} onClick={toggleFollow}>
             {follow ? "Following" : "Free Look"}
           </button>
         )}
@@ -177,68 +168,76 @@ export default function MapPage() {
           gap: 12,
         }}
       >
-        <button style={bigBtn} onClick={startLogHouse}>
-          Log House
+        <button
+          style={{
+            ...btnStyle,
+            background: logMode ? "#22c55e" : "white",
+            color: logMode ? "white" : "black",
+          }}
+          onClick={startLogHouse}
+        >
+          {logMode ? "Tap Map to Drop Pin" : "Log House"}
         </button>
-        {logModeRef.current && (
-          <button style={bigBtn} onClick={cancelLogHouse}>
+
+        {logMode && (
+          <button style={btnStyle} onClick={cancelLogHouse}>
             Cancel
           </button>
         )}
       </div>
 
       {/* STATUS PICKER */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 90,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 14,
-          borderRadius: 14,
-          display: showStatusPicker ? "flex" : "none",
-          flexDirection: "column",
-          gap: 10,
-          zIndex: 60,
-        }}
-      >
-        {STATUS_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            onClick={() => savePin(opt.color)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "white",
-            }}
-          >
-            <span
+      {showStatusPicker && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 14,
+            borderRadius: 14,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            zIndex: 60,
+          }}
+        >
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => savePin(opt.color)}
               style={{
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                background: opt.color,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "white",
               }}
-            />
-            {opt.label}
-          </button>
-        ))}
-      </div>
+            >
+              <span
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: opt.color,
+                }}
+              />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/* ---------------- STYLES ---------------- */
-const bigBtn = {
-  padding: "12px 16px",
-  fontSize: 15,
-  fontWeight: 600,
-  borderRadius: 12,
+const btnStyle = {
+  padding: "10px 14px",
   background: "white",
+  borderRadius: 10,
+  fontWeight: 600,
   border: "1px solid #ddd",
 };
