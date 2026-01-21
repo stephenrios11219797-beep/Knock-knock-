@@ -7,20 +7,30 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+const STATUS_COLORS = {
+  none: "#6b7280",        // gray
+  walked: "#16a34a",      // green
+  no_answer: "#dc2626",   // red
+  soft_set: "#facc15",   // yellow
+  contingency: "#7c3aed",// purple
+  contract: "#f59e0b",   // gold
+};
+
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
 
-  const tempPinRef = useRef(null);
+  const pinRef = useRef(null);
+  const followRef = useRef(true);
   const isLoggingRef = useRef(false);
-  const followRef = useRef(true); // 🔑 SOURCE OF TRUTH
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
+  const [status, setStatus] = useState("none");
 
-  /* ---------- MAP INIT (ONCE) ---------- */
+  /* ---------- MAP INIT ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -61,7 +71,6 @@ export default function MapPage() {
       });
     });
 
-    // 🔑 USER INTERACTION = FREE LOOK
     map.on("dragstart", () => {
       followRef.current = false;
       setFollow(false);
@@ -70,13 +79,15 @@ export default function MapPage() {
     map.on("click", (e) => {
       if (!isLoggingRef.current) return;
 
-      if (tempPinRef.current) tempPinRef.current.remove();
+      if (pinRef.current) pinRef.current.remove();
 
-      tempPinRef.current = new mapboxgl.Marker({
-        color: "#6b7280", // gray (unlogged)
+      pinRef.current = new mapboxgl.Marker({
+        color: STATUS_COLORS.none,
       })
         .setLngLat(e.lngLat)
         .addTo(map);
+
+      setStatus("none");
     });
 
     return () => map.remove();
@@ -106,7 +117,6 @@ export default function MapPage() {
           ],
         });
 
-        // 🔑 ONLY CENTER IF FOLLOW IS TRUE
         if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
@@ -119,11 +129,10 @@ export default function MapPage() {
     );
   };
 
-  /* ---------- FOLLOW TOGGLE ---------- */
+  /* ---------- FOLLOW ---------- */
   const toggleFollow = () => {
-    const next = !followRef.current;
-    followRef.current = next;
-    setFollow(next);
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
   };
 
   /* ---------- LOG HOUSE ---------- */
@@ -132,76 +141,34 @@ export default function MapPage() {
     setIsLogging(next);
     isLoggingRef.current = next;
 
-    if (!next && tempPinRef.current) {
-      tempPinRef.current.remove();
-      tempPinRef.current = null;
+    if (!next && pinRef.current) {
+      pinRef.current.remove();
+      pinRef.current = null;
     }
   };
 
-  /* ---------- CLEANUP ---------- */
-  useEffect(() => {
-    return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-    };
-  }, []);
+  /* ---------- STATUS ---------- */
+  const selectStatus = (value) => {
+    setStatus(value);
+    if (pinRef.current) {
+      pinRef.current.getElement().style.backgroundColor =
+        STATUS_COLORS[value];
+    }
+  };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* HOME */}
-      <div
-        style={{
-          position: "fixed",
-          top: "env(safe-area-inset-top)",
-          left: 0,
-          zIndex: 50,
-          pointerEvents: "none",
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            pointerEvents: "auto",
-            margin: 12,
-            padding: "8px 12px",
-            background: "white",
-            borderRadius: 8,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          ← Home
-        </Link>
+      <div style={{ position: "fixed", top: "env(safe-area-inset-top)", left: 0, zIndex: 50 }}>
+        <Link href="/" style={pill}>← Home</Link>
       </div>
 
       {/* GPS / FOLLOW */}
-      <div
-        style={{
-          position: "fixed",
-          top: "env(safe-area-inset-top)",
-          right: 0,
-          zIndex: 50,
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            margin: 12,
-            pointerEvents: "auto",
-          }}
-        >
-          {!gpsEnabled && <button onClick={enableGPS}>GPS</button>}
-          {gpsEnabled && (
-            <button onClick={toggleFollow}>
-              {follow ? "Following" : "Free Look"}
-            </button>
-          )}
-        </div>
+      <div style={{ position: "fixed", top: "env(safe-area-inset-top)", right: 0, zIndex: 50 }}>
+        {!gpsEnabled && <button style={pill} onClick={enableGPS}>GPS</button>}
+        {gpsEnabled && <button style={pill} onClick={toggleFollow}>{follow ? "Following" : "Free Look"}</button>}
       </div>
 
       {/* LOG HOUSE */}
@@ -212,15 +179,57 @@ export default function MapPage() {
           bottom: 24,
           right: 24,
           padding: "14px 18px",
+          borderRadius: 999,
           background: isLogging ? "#dc2626" : "#2563eb",
           color: "white",
-          borderRadius: 999,
           fontWeight: 600,
-          zIndex: 50,
         }}
       >
         {isLogging ? "Cancel Log" : "Log House"}
       </button>
+
+      {/* STATUS SELECTOR */}
+      {isLogging && pinRef.current && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            right: 24,
+            background: "white",
+            borderRadius: 12,
+            padding: 8,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            zIndex: 50,
+          }}
+        >
+          {Object.keys(STATUS_COLORS).map((key) => (
+            <button
+              key={key}
+              onClick={() => selectStatus(key)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                background: STATUS_COLORS[key],
+                color: "white",
+                fontWeight: 600,
+              }}
+            >
+              {key.replace("_", " ").toUpperCase()}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+const pill = {
+  margin: 12,
+  padding: "8px 12px",
+  background: "white",
+  borderRadius: 999,
+  fontWeight: 600,
+  textDecoration: "none",
+};
