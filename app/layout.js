@@ -1,5 +1,4 @@
 import "./globals.css";
-import MainNav from "../components/MainNav";
 
 export const metadata = {
   title: "Knock Knock",
