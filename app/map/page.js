@@ -11,14 +11,15 @@ export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
-  const lastPositionRef = useRef(null);
+
   const tempPinRef = useRef(null);
+  const isLoggingRef = useRef(false);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [isLogging, setIsLogging] = useState(false);
 
-  /* ---------------- MAP INIT ---------------- */
+  /* ---------- MAP INIT (RUNS ONCE) ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -59,37 +60,34 @@ export default function MapPage() {
       });
     });
 
-    // Auto unlock follow on pan
+    // Auto free-look when user drags
     map.on("dragstart", () => setFollow(false));
 
-    // MANUAL PIN DROP
+    // Manual pin drop (SAFE)
     map.on("click", (e) => {
-      if (!isLogging) return;
+      if (!isLoggingRef.current) return;
 
-      // Remove existing temp pin
       if (tempPinRef.current) {
         tempPinRef.current.remove();
       }
 
       tempPinRef.current = new mapboxgl.Marker({
-        color: "#6b7280", // gray (unlogged)
+        color: "#6b7280", // gray
       })
         .setLngLat(e.lngLat)
         .addTo(map);
     });
 
     return () => map.remove();
-  }, [isLogging]);
+  }, []);
 
-  /* ---------------- GPS ---------------- */
+  /* ---------- GPS ---------- */
   const enableGPS = () => {
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
-
-        lastPositionRef.current = [longitude, latitude];
 
         mapRef.current.getSource("user-location")?.setData({
           type: "FeatureCollection",
@@ -100,7 +98,9 @@ export default function MapPage() {
                 type: "Point",
                 coordinates: [longitude, latitude],
               },
-              properties: { accuracy: Math.max(accuracy / 2, 20) },
+              properties: {
+                accuracy: Math.max(accuracy / 2, 20),
+              },
             },
           ],
         });
@@ -117,7 +117,19 @@ export default function MapPage() {
     );
   };
 
-  /* ---------------- CLEANUP ---------------- */
+  /* ---------- LOG HOUSE TOGGLE ---------- */
+  const toggleLogHouse = () => {
+    const next = !isLogging;
+    setIsLogging(next);
+    isLoggingRef.current = next;
+
+    if (!next && tempPinRef.current) {
+      tempPinRef.current.remove();
+      tempPinRef.current = null;
+    }
+  };
+
+  /* ---------- CLEANUP ---------- */
   useEffect(() => {
     return () => {
       if (watchIdRef.current) {
@@ -183,9 +195,9 @@ export default function MapPage() {
         </div>
       </div>
 
-      {/* LOG HOUSE BUTTON */}
+      {/* LOG HOUSE */}
       <button
-        onClick={() => setIsLogging((v) => !v)}
+        onClick={toggleLogHouse}
         style={{
           position: "fixed",
           bottom: 24,
