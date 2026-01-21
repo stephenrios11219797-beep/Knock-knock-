@@ -14,9 +14,9 @@ export default function MainNav({
   const isMap = pathname === "/map";
 
   return (
-    <div style={styles.nav}>
-      {/* LEFT SIDE */}
-      <div style={styles.left}>
+    <>
+      {/* TOP LEFT */}
+      <div style={styles.topLeft}>
         {isHome && (
           <button style={styles.primaryBtn} onClick={() => router.push("/map")}>
             Map
@@ -30,60 +30,50 @@ export default function MainNav({
         )}
       </div>
 
-      {/* RIGHT SIDE (MAP ONLY) */}
-      <div style={styles.right}>
-        {isMap && (
-          <>
-            <button style={styles.smallBtn} onClick={onRequestGPS}>
-              GPS
-            </button>
+      {/* TOP RIGHT (MAP ONLY) */}
+      {isMap && (
+        <div style={styles.topRight}>
+          <button style={styles.smallBtn} onClick={onRequestGPS}>
+            GPS
+          </button>
 
-            <button style={styles.smallBtn} onClick={onToggleFollow}>
-              {isFollowing ? "Unlock" : "Follow"}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+          <button style={styles.smallBtn} onClick={onToggleFollow}>
+            {isFollowing ? "Unlock" : "Follow"}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
 const styles = {
-  nav: {
+  topLeft: {
     position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: "56px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "0 12px",
-    background: "#ffffff",
-    borderBottom: "1px solid #e5e5e5",
+    top: "12px",
+    left: "12px",
     zIndex: 1000,
   },
-  left: {
+  topRight: {
+    position: "fixed",
+    top: "12px",
+    right: "12px",
     display: "flex",
     gap: "8px",
-  },
-  right: {
-    display: "flex",
-    gap: "8px",
+    zIndex: 1000,
   },
   primaryBtn: {
     padding: "8px 14px",
-    fontSize: "15px",
+    fontSize: "14px",
     fontWeight: "600",
-    borderRadius: "8px",
+    borderRadius: "999px", // pill
     border: "1px solid #ccc",
-    background: "#f5f5f5",
+    background: "#ffffff",
   },
   smallBtn: {
-    padding: "6px 10px",
+    padding: "6px 12px",
     fontSize: "13px",
-    borderRadius: "8px",
+    borderRadius: "999px", // pill
     border: "1px solid #ccc",
-    background: "#f9f9f9",
+    background: "#ffffff",
   },
 };
