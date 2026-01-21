@@ -19,11 +19,12 @@ export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
+
   const draftPinRef = useRef(null);
+  const logModeRef = useRef(false); // 🔑 NOT STATE
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
-  const [logMode, setLogMode] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
 
   /* ---------------- MAP INIT ---------------- */
@@ -38,7 +39,7 @@ export default function MapPage() {
     });
 
     mapRef.current.on("click", (e) => {
-      if (!logMode) return;
+      if (!logModeRef.current) return;
 
       if (draftPinRef.current) {
         draftPinRef.current.remove();
@@ -54,15 +55,16 @@ export default function MapPage() {
     });
 
     return () => {
-      if (watchIdRef.current) {
+      watchIdRef.current &&
         navigator.geolocation.clearWatch(watchIdRef.current);
-      }
       mapRef.current?.remove();
     };
-  }, [logMode]);
+  }, []);
 
   /* ---------------- GPS ---------------- */
   const enableGPS = () => {
+    if (gpsEnabled) return;
+
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -81,7 +83,18 @@ export default function MapPage() {
     );
   };
 
-  /* ---------------- SAVE PIN ---------------- */
+  /* ---------------- LOG HOUSE ---------------- */
+  const startLogHouse = () => {
+    logModeRef.current = true;
+  };
+
+  const cancelLogHouse = () => {
+    draftPinRef.current?.remove();
+    draftPinRef.current = null;
+    logModeRef.current = false;
+    setShowStatusPicker(false);
+  };
+
   const savePin = (color) => {
     if (!draftPinRef.current) return;
 
@@ -93,21 +106,17 @@ export default function MapPage() {
       .addTo(mapRef.current);
 
     draftPinRef.current = null;
+    logModeRef.current = false;
     setShowStatusPicker(false);
-    setLogMode(false);
-  };
-
-  /* ---------------- CANCEL ---------------- */
-  const cancelLog = () => {
-    draftPinRef.current?.remove();
-    draftPinRef.current = null;
-    setShowStatusPicker(false);
-    setLogMode(false);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+      {/* MAP — NEVER RERENDERS */}
+      <div
+        ref={mapContainerRef}
+        style={{ height: "100%", width: "100%" }}
+      />
 
       {/* TOP LEFT — HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
@@ -131,13 +140,13 @@ export default function MapPage() {
           <button onClick={enableGPS}>Enable GPS</button>
         )}
         {gpsEnabled && (
-          <button onClick={() => setFollow(!follow)}>
+          <button onClick={() => setFollow((v) => !v)}>
             {follow ? "Following" : "Free Look"}
           </button>
         )}
       </div>
 
-      {/* BOTTOM — LOG HOUSE */}
+      {/* BOTTOM — LOG HOUSE (STABLE BUTTON) */}
       <div
         style={{
           position: "fixed",
@@ -145,47 +154,45 @@ export default function MapPage() {
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 50,
+          display: "flex",
+          gap: 10,
         }}
       >
-        {!logMode && (
-          <button onClick={() => setLogMode(true)}>Log House</button>
-        )}
-        {logMode && (
-          <button onClick={cancelLog}>Cancel Log</button>
+        <button onClick={startLogHouse}>Log House</button>
+        {logModeRef.current && (
+          <button onClick={cancelLogHouse}>Cancel</button>
         )}
       </div>
 
-      {/* STATUS PICKER */}
-      {showStatusPicker && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 12,
-            borderRadius: 10,
-            display: "flex",
-            gap: 10,
-            zIndex: 60,
-          }}
-        >
-          {Object.entries(STATUS_COLORS).map(([key, color]) => (
-            <button
-              key={key}
-              onClick={() => savePin(color)}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                background: color,
-                border: "none",
-              }}
-            />
-          ))}
-        </div>
-      )}
+      {/* STATUS PICKER — VISIBILITY ONLY */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 90,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 12,
+          borderRadius: 10,
+          display: showStatusPicker ? "flex" : "none",
+          gap: 10,
+          zIndex: 60,
+        }}
+      >
+        {Object.entries(STATUS_COLORS).map(([key, color]) => (
+          <button
+            key={key}
+            onClick={() => savePin(color)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              background: color,
+              border: "none",
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
