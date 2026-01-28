@@ -1,193 +1,159 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
-import Link from "next/link";
-import ActionPanel from "./ActionPanel";
+import { useState } from "react";
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+const STATUS_OPTIONS = [
+  { label: "Walked", color: "#16a34a" },
+  { label: "No Answer", color: "#dc2626" },
+  { label: "Soft Set", color: "#0ea5e9" },
+  { label: "Contingency", color: "#7c3aed" },
+  { label: "Contract", color: "#d4af37" },
+  { label: "Not Interested", color: "#4b5563" },
+];
 
-const RADIUS_METERS = 4000;
-const todayKey = () => new Date().toISOString().slice(0, 10);
+export default function ActionPanel({ getPendingLngLat, onSave }) {
+  const [showStatus, setShowStatus] = useState(false);
+  const [showSeverity, setShowSeverity] = useState(false);
+  const [severity, setSeverity] = useState(5);
+  const [notes, setNotes] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState(null);
 
-/* ---------- STORAGE ---------- */
-const loadAllPins = () =>
-  JSON.parse(localStorage.getItem("pins") || "{}");
-
-const savePinToStorage = (pin) => {
-  const all = loadAllPins();
-  const today = todayKey();
-  all[today] = [...(all[today] || []), pin];
-  localStorage.setItem("pins", JSON.stringify(all));
-};
-
-/* ---------- UTILS ---------- */
-const haversine = (a, b) => {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371000;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(h));
-};
-
-/* ---------- PIN ---------- */
-function createPin(color) {
-  const el = document.createElement("div");
-  el.style.padding = "14px";
-  el.style.cursor = "pointer";
-  el.innerHTML = `
-    <svg width="24" height="36" viewBox="0 0 24 36">
-      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z"
-        fill="${color}" />
-      <circle cx="12" cy="12" r="4" fill="white" />
-    </svg>
-  `;
-  el.style.transform = "translate(-50%, -100%)";
-  return el;
-}
-
-export default function MapPage() {
-  const mapRef = useRef(null);
-  const mapContainerRef = useRef(null);
-  const watchIdRef = useRef(null);
-  const userPosRef = useRef(null);
-  const renderedPinsRef = useRef([]);
-  const pendingClickRef = useRef(null);
-
-  /* ---------- MAP INIT ---------- */
-  useEffect(() => {
-    if (mapRef.current) return;
-
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: [-98.5795, 39.8283],
-      zoom: 4,
-    });
-
-    mapRef.current = map;
-
-    map.on("load", () => {
-      map.addSource("user-location", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: "accuracy",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": ["get", "accuracy"],
-          "circle-color": "#3b82f6",
-          "circle-opacity": 0.2,
-        },
-      });
-
-      map.addLayer({
-        id: "dot",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "#2563eb",
-        },
-      });
-
-      setTimeout(renderNearbyPins, 300);
-    });
-
-    map.on("moveend", renderNearbyPins);
-
-    map.on("click", (e) => {
-      pendingClickRef.current = e.lngLat;
-    });
-
-    return () => {
-      if (watchIdRef.current)
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      map.remove();
-    };
-  }, []);
-
-  /* ---------- GPS ---------- */
-  useEffect(() => {
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { longitude, latitude } = pos.coords;
-        userPosRef.current = { lng: longitude, lat: latitude };
-
-        mapRef.current?.getSource("user-location")?.setData({
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [longitude, latitude] },
-              properties: { accuracy: 20 },
-            },
-          ],
-        });
-
-        renderNearbyPins();
-      },
-      () => {},
-      { enableHighAccuracy: true }
-    );
-  }, []);
-
-  /* ---------- PIN RENDER ---------- */
-  const renderNearbyPins = () => {
-    renderedPinsRef.current.forEach((m) => m.remove());
-    renderedPinsRef.current = [];
-
-    if (!userPosRef.current || !mapRef.current) return;
-
-    const bounds = mapRef.current.getBounds();
-    const all = loadAllPins()[todayKey()] || [];
-
-    all.forEach((p) => {
-      const dist = haversine(userPosRef.current, p);
-
-      if (dist <= RADIUS_METERS && bounds.contains([p.lng, p.lat])) {
-        const marker = new mapboxgl.Marker({
-          element: createPin(p.color),
-        })
-          .setLngLat([p.lng, p.lat])
-          .addTo(mapRef.current);
-
-        renderedPinsRef.current.push(marker);
-      }
-    });
+  const logHouse = () => {
+    setShowStatus(true);
   };
 
-  /* ---------- SAVE FROM ACTION PANEL ---------- */
-  const handleSaveLog = ({ lat, lng, color }) => {
-    savePinToStorage({ lat, lng, color, time: Date.now() });
-    renderNearbyPins();
+  const selectStatus = (status) => {
+    setSelectedStatus(status);
+
+    if (status.label === "No Answer") {
+      setShowSeverity(true);
+    } else {
+      save(status);
+    }
+  };
+
+  const save = (status) => {
+    const lngLat = getPendingLngLat();
+    if (!lngLat) return;
+
+    onSave({
+      lat: lngLat.lat,
+      lng: lngLat.lng,
+      color: status.color,
+      severity,
+      notes,
+    });
+
+    reset();
+  };
+
+  const reset = () => {
+    setShowStatus(false);
+    setShowSeverity(false);
+    setSeverity(5);
+    setNotes("");
+    setSelectedStatus(null);
   };
 
   return (
-    <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
-
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
+    <>
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+        }}
+      >
+        <button
+          onClick={logHouse}
+          style={{ borderRadius: 999, padding: "12px 18px" }}
+        >
+          Log House
+        </button>
       </div>
 
-      <ActionPanel
-        getPendingLngLat={() => pendingClickRef.current}
-        onSave={handleSaveLog}
-      />
-    </div>
+      {showStatus && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 10,
+            borderRadius: 12,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            justifyContent: "center",
+            maxWidth: "90vw",
+            zIndex: 100,
+          }}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => selectStatus(s)}
+              style={{
+                background: s.color,
+                color: "white",
+                padding: "6px 10px",
+                borderRadius: 6,
+                fontSize: 12,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+          <button onClick={reset}>Cancel</button>
+        </div>
+      )}
+
+      {showSeverity && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 22,
+            borderRadius: 18,
+            width: 320,
+            zIndex: 200,
+          }}
+        >
+          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+
+          <input
+            type="range"
+            min={0}
+            max={10}
+            value={severity}
+            onChange={(e) => setSeverity(Number(e.target.value))}
+            style={{ width: "100%" }}
+          />
+
+          <textarea
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              height: 80,
+              fontSize: 16,
+            }}
+          />
+
+          <div style={{ display: "flex", gap: 12, marginTop: 14 }}>
+            <button onClick={() => save(selectedStatus)}>Save</button>
+            <button onClick={reset}>Skip</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
