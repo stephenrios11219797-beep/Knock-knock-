@@ -22,7 +22,7 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 function createPin(color) {
   const el = document.createElement("div");
   el.innerHTML = `
-    <svg width="26" height="38" viewBox="0 0 24 36">
+    <svg width="24" height="36" viewBox="0 0 24 36">
       <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z"
         fill="${color}" />
       <circle cx="12" cy="12" r="4" fill="white" />
@@ -38,14 +38,15 @@ export default function MapPage() {
   const watchIdRef = useRef(null);
 
   const followRef = useRef(true);
-  const loggingRef = useRef(false);
   const trailOnRef = useRef(false);
+  const activeSegmentRef = useRef(null);
+  const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
 
   const [follow, setFollow] = useState(true);
+  const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
-  const [trailOn, setTrailOn] = useState(false);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -88,12 +89,12 @@ export default function MapPage() {
         },
       });
 
-      /* TRAIL */
+      /* TRAIL — MULTI SEGMENT */
       map.addSource("trail", {
         type: "geojson",
         data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: [] },
+          type: "FeatureCollection",
+          features: [],
         },
       });
 
@@ -107,7 +108,7 @@ export default function MapPage() {
         },
       });
 
-      /* RESTORE TRAIL */
+      /* RESTORE TODAY TRAIL */
       const saved = JSON.parse(localStorage.getItem("trail") || "{}");
       if (saved.date === todayKey()) {
         map.getSource("trail").setData(saved.data);
@@ -143,30 +144,33 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
 
-        mapRef.current
-          ?.getSource("user-location")
-          ?.setData({
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [longitude, latitude],
-                },
-                properties: { accuracy: Math.max(accuracy / 2, 20) },
+        mapRef.current?.getSource("user-location")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [longitude, latitude],
               },
-            ],
-          });
+              properties: { accuracy: Math.max(accuracy / 2, 20) },
+            },
+          ],
+        });
 
-        if (trailOnRef.current) {
+        /* RECORD TRAIL ONLY IF ON */
+        if (trailOnRef.current && activeSegmentRef.current) {
+          activeSegmentRef.current.geometry.coordinates.push([
+            longitude,
+            latitude,
+          ]);
+
           const src = mapRef.current.getSource("trail");
-          const data = src._data;
-          data.geometry.coordinates.push([longitude, latitude]);
-          src.setData(data);
+          src.setData(src._data);
+
           localStorage.setItem(
             "trail",
-            JSON.stringify({ date: todayKey(), data })
+            JSON.stringify({ date: todayKey(), data: src._data })
           );
         }
 
@@ -189,6 +193,22 @@ export default function MapPage() {
   };
 
   const toggleTrail = () => {
+    const src = mapRef.current.getSource("trail");
+
+    if (!trailOnRef.current) {
+      /* TURN ON → START NEW SEGMENT */
+      const newSegment = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] },
+      };
+
+      src._data.features.push(newSegment);
+      activeSegmentRef.current = newSegment;
+    } else {
+      /* TURN OFF → STOP RECORDING */
+      activeSegmentRef.current = null;
+    }
+
     trailOnRef.current = !trailOnRef.current;
     setTrailOn(trailOnRef.current);
   };
@@ -207,15 +227,14 @@ export default function MapPage() {
   };
 
   const savePin = (color) => {
-    pendingPinRef.current?.remove();
-    pendingPinRef.current = null;
+    const lngLat = pendingPinRef.current.getLngLat();
+    pendingPinRef.current.remove();
 
-    new mapboxgl.Marker({
-      element: createPin(color),
-    })
-      .setLngLat(mapRef.current.getCenter())
+    new mapboxgl.Marker({ element: createPin(color) })
+      .setLngLat(lngLat)
       .addTo(mapRef.current);
 
+    pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
@@ -273,10 +292,13 @@ export default function MapPage() {
             left: "50%",
             transform: "translateX(-50%)",
             background: "white",
-            padding: 12,
+            padding: 10,
             borderRadius: 12,
             display: "flex",
-            gap: 8,
+            gap: 6,
+            flexWrap: "wrap",
+            justifyContent: "center",
+            maxWidth: "90vw",
             zIndex: 100,
           }}
         >
@@ -287,15 +309,17 @@ export default function MapPage() {
               style={{
                 background: s.color,
                 color: "white",
-                padding: "6px 10px",
-                borderRadius: 8,
-                fontSize: 12,
+                padding: "4px 8px",
+                borderRadius: 6,
+                fontSize: 11,
               }}
             >
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog}>Cancel</button>
+          <button onClick={cancelLog} style={{ fontSize: 11 }}>
+            Cancel
+          </button>
         </div>
       )}
     </div>
