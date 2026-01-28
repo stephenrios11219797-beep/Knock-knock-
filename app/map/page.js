@@ -49,7 +49,7 @@ const haversine = (a, b) => {
 /* ---------- PIN ---------- */
 function createPin(color) {
   const el = document.createElement("div");
-  el.style.padding = "12px";
+  el.style.padding = "14px";
   el.style.cursor = "pointer";
   el.innerHTML = `
     <svg width="24" height="36" viewBox="0 0 24 36">
@@ -240,6 +240,44 @@ export default function MapPage() {
     });
   };
 
+  /* ---------- CONTROLS ---------- */
+  const toggleFollow = () => {
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
+  };
+
+  const toggleTrail = () => {
+    const src = mapRef.current.getSource("trail");
+    src.setData({ type: "FeatureCollection", features: [] });
+
+    if (!trailOnRef.current) {
+      const segment = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] },
+      };
+      src._data.features.push(segment);
+      activeSegmentRef.current = segment;
+    } else {
+      activeSegmentRef.current = null;
+    }
+
+    trailOnRef.current = !trailOnRef.current;
+    setTrailOn(trailOnRef.current);
+  };
+
+  const armLogHouse = () => {
+    loggingRef.current = true;
+    setLoggingMode(true);
+  };
+
+  const cancelLog = () => {
+    pendingPinRef.current?.remove();
+    pendingPinRef.current = null;
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
+  };
+
   const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
@@ -280,26 +318,24 @@ export default function MapPage() {
         .severity-slider {
           -webkit-appearance: none;
           width: 100%;
-          height: 14px;
+          height: 16px;
           border-radius: 9999px;
-          background: transparent;
         }
         .severity-slider::-webkit-slider-runnable-track {
-          height: 14px;
+          height: 16px;
           border-radius: 9999px;
           background: linear-gradient(
             to right,
             #16a34a 0%,
-            #facc15 calc(var(--percent) * 0.5),
-            #f97316 var(--percent),
-            #dc2626 calc(var(--percent) + 1%),
-            #e5e7eb 100%
+            #facc15 50%,
+            #f97316 75%,
+            #dc2626 100%
           );
         }
         .severity-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
-          height: 24px;
-          width: 24px;
+          height: 26px;
+          width: 26px;
           background: white;
           border-radius: 50%;
           border: 2px solid #000;
@@ -309,6 +345,86 @@ export default function MapPage() {
 
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
+      {/* HOME */}
+      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
+        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
+          ← Home
+        </Link>
+      </div>
+
+      {/* TOP RIGHT */}
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+        <button onClick={toggleFollow}>
+          {follow ? "Following" : "Free Look"}
+        </button>
+        <button onClick={toggleTrail}>
+          {trailOn ? "Trail On" : "Trail Off"}
+        </button>
+      </div>
+
+      {/* LOG HOUSE */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+        }}
+      >
+        <button
+          onClick={armLogHouse}
+          style={{
+            background: loggingMode ? "#16a34a" : "white",
+            borderRadius: 999,
+            padding: "12px 18px",
+          }}
+        >
+          Log House
+        </button>
+      </div>
+
+      {/* STATUS */}
+      {showStatus && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 10,
+            borderRadius: 12,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            justifyContent: "center",
+            maxWidth: "90vw",
+            zIndex: 100,
+          }}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => savePin(s)}
+              style={{
+                background: s.color,
+                color: "white",
+                padding: "4px 8px",
+                borderRadius: 6,
+                fontSize: 11,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+          <button onClick={cancelLog} style={{ fontSize: 11 }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* SEVERITY + NOTES */}
       {showSeverity && (
         <div
           style={{
@@ -332,16 +448,8 @@ export default function MapPage() {
             min={0}
             max={10}
             value={severity}
-            onChange={(e) => {
-              const val = Number(e.target.value);
-              setSeverity(val);
-              e.currentTarget.style.setProperty(
-                "--percent",
-                `${val * 10}%`
-              );
-            }}
+            onChange={(e) => setSeverity(Number(e.target.value))}
             className="severity-slider"
-            style={{ "--percent": `${severity * 10}%` }}
           />
 
           <textarea
