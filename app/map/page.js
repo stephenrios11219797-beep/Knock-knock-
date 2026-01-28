@@ -7,17 +7,31 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+const STATUS_OPTIONS = [
+  { label: "Walked", color: "#16a34a" },
+  { label: "No Answer", color: "#dc2626" },
+  { label: "Soft Set", color: "#2563eb" },
+  { label: "Contingency", color: "#7c3aed" },
+  { label: "Contract", color: "#d4af37" },
+  { label: "Not Interested", color: "#374151" },
+];
+
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
 
-  const trailCoordsRef = useRef([]);
+  const followRef = useRef(true);
   const trailRecordingRef = useRef(false);
+  const trailCoordsRef = useRef([]);
+
+  const pendingPinRef = useRef(null);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [trailRecording, setTrailRecording] = useState(false);
+  const [loggingMode, setLoggingMode] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
 
   // INIT MAP
   useEffect(() => {
@@ -31,40 +45,9 @@ export default function MapPage() {
     });
 
     mapRef.current.on("load", () => {
-      // USER LOCATION
-      mapRef.current.addSource("user-location", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      mapRef.current.addLayer({
-        id: "accuracy",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": ["get", "accuracy"],
-          "circle-color": "#2563eb",
-          "circle-opacity": 0.25,
-        },
-      });
-
-      mapRef.current.addLayer({
-        id: "dot",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": 6,
-          "circle-color": "#2563eb",
-        },
-      });
-
-      // TRAIL
       mapRef.current.addSource("route", {
         type: "geojson",
-        data: {
-          type: "Feature",
-          geometry: { type: "LineString", coordinates: [] },
-        },
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } },
       });
 
       mapRef.current.addLayer({
@@ -79,15 +62,29 @@ export default function MapPage() {
       });
     });
 
-    return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+    mapRef.current.on("click", (e) => {
+      if (!loggingMode) return;
+
+      if (pendingPinRef.current) {
+        pendingPinRef.current.remove();
       }
+
+      pendingPinRef.current = new mapboxgl.Marker({
+        color: "#9ca3af",
+      })
+        .setLngLat(e.lngLat)
+        .addTo(mapRef.current);
+
+      setShowStatus(true);
+    });
+
+    return () => {
+      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
       mapRef.current?.remove();
     };
-  }, []);
+  }, [loggingMode]);
 
-  // AUTO-ENABLE GPS ON LOAD (FIX)
+  // AUTO GPS
   useEffect(() => {
     enableGPS();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,30 +92,13 @@ export default function MapPage() {
 
   const enableGPS = () => {
     if (gpsEnabled) return;
-
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude, accuracy } = pos.coords;
+        const { longitude, latitude } = pos.coords;
 
-        mapRef.current.getSource("user-location")?.setData({
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude],
-              },
-              properties: {
-                accuracy: Math.max(accuracy / 2, 20),
-              },
-            },
-          ],
-        });
-
-        if (follow) {
+        if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -129,16 +109,18 @@ export default function MapPage() {
           trailCoordsRef.current.push([longitude, latitude]);
           mapRef.current.getSource("route")?.setData({
             type: "Feature",
-            geometry: {
-              type: "LineString",
-              coordinates: trailCoordsRef.current,
-            },
+            geometry: { type: "LineString", coordinates: trailCoordsRef.current },
           });
         }
       },
       () => alert("GPS permission denied"),
       { enableHighAccuracy: true }
     );
+  };
+
+  const toggleFollow = () => {
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
   };
 
   const toggleTrailRecording = () => {
@@ -155,25 +137,25 @@ export default function MapPage() {
     }
   };
 
+  const savePin = (color) => {
+    if (!pendingPinRef.current) return;
+
+    pendingPinRef.current.getElement().style.backgroundColor = color;
+
+    pendingPinRef.current = null;
+    setShowStatus(false);
+    setLoggingMode(false);
+  };
+
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* HOME */}
-      <div
-        style={{
-          position: "fixed",
-          top: "env(safe-area-inset-top)",
-          left: 0,
-          zIndex: 50,
-          pointerEvents: "none",
-        }}
-      >
+      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link
           href="/"
           style={{
-            pointerEvents: "auto",
-            margin: 12,
             padding: "8px 12px",
             background: "white",
             borderRadius: 999,
@@ -185,26 +167,61 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* CONTROLS */}
-      <div
-        style={{
-          position: "fixed",
-          top: "env(safe-area-inset-top)",
-          right: 0,
-          zIndex: 50,
-          pointerEvents: "none",
-        }}
-      >
-        <div style={{ display: "flex", gap: 8, margin: 12, pointerEvents: "auto" }}>
-          <button onClick={() => setFollow(!follow)}>
+      {/* RIGHT CONTROLS */}
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={toggleFollow}>
             {follow ? "Following" : "Free Look"}
           </button>
 
           <button onClick={toggleTrailRecording}>
-            {trailRecording ? "Trail Recording" : "Trail Off"}
+            {trailRecording ? "Trail On" : "Trail Off"}
+          </button>
+
+          <button
+            onClick={() => setLoggingMode(true)}
+            style={{
+              background: loggingMode ? "#16a34a" : "white",
+            }}
+          >
+            Log House
           </button>
         </div>
       </div>
+
+      {/* STATUS SELECTOR */}
+      {showStatus && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 12,
+            borderRadius: 12,
+            display: "flex",
+            gap: 8,
+            zIndex: 100,
+          }}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => savePin(s.color)}
+              style={{
+                background: s.color,
+                color: "white",
+                padding: "6px 10px",
+                borderRadius: 8,
+                fontSize: 12,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
