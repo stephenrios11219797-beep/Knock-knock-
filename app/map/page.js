@@ -58,10 +58,71 @@ export default function MapClient() {
     <>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100vh' }} />
 
-      <ActionPanel
-        selectedPin={selectedPin}
-        clearSelectedPin={() => setSelectedPin(null)}
-      />
+      {/* ACTION PANEL */}
+      <ActionPanel />
+
+      {/* PIN DETAILS MODAL */}
+      {selectedPin && (
+        <div
+          onClick={() => setSelectedPin(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+            zIndex: 50,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 16,
+              width: '90%',
+              maxWidth: 320,
+              boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <strong>House Details</strong>
+              <button
+                onClick={() => setSelectedPin(null)}
+                style={{
+                  fontSize: 16,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 14 }}>
+              <div><strong>Status:</strong> {selectedPin.type}</div>
+              <div><strong>Logged:</strong> {selectedPin.timestamp}</div>
+
+              {selectedPin.severity !== undefined && (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Severity:</strong> {selectedPin.severity}/10
+                </div>
+              )}
+
+              {selectedPin.notes && (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Notes:</strong>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>
+                    {selectedPin.notes}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
