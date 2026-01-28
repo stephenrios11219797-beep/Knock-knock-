@@ -53,18 +53,22 @@ export default function ActionPanel({ getPendingLngLat, onSave }) {
     setSeverity(5);
     setNotes("");
     setSelectedStatus(null);
-  };
-
-  return (
-    <>
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
+  };return (
+  <div
+    style={{
+      position: "fixed",
+      bottom: 200,
+      left: 20,
+      zIndex: 9999,
+      background: "red",
+      color: "white",
+      padding: 20,
+      fontSize: 20,
+    }}
+  >
+    ACTION PANEL TEST
+  </div>
+);
       >
         <button
           onClick={logHouse}
