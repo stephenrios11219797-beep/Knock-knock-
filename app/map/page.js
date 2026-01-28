@@ -318,24 +318,24 @@ export default function MapPage() {
         .severity-slider {
           -webkit-appearance: none;
           width: 100%;
-          height: 16px;
+          height: 18px;
           border-radius: 9999px;
         }
         .severity-slider::-webkit-slider-runnable-track {
-          height: 16px;
+          height: 18px;
           border-radius: 9999px;
           background: linear-gradient(
             to right,
             #16a34a 0%,
-            #facc15 50%,
-            #f97316 75%,
+            #facc15 40%,
+            #f97316 70%,
             #dc2626 100%
           );
         }
         .severity-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
-          height: 26px;
-          width: 26px;
+          height: 28px;
+          width: 28px;
           background: white;
           border-radius: 50%;
           border: 2px solid #000;
@@ -410,15 +410,15 @@ export default function MapPage() {
               style={{
                 background: s.color,
                 color: "white",
-                padding: "4px 8px",
+                padding: "6px 10px",
                 borderRadius: 6,
-                fontSize: 11,
+                fontSize: 12,
               }}
             >
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog} style={{ fontSize: 11 }}>
+          <button onClick={cancelLog} style={{ fontSize: 12, padding: "6px 10px" }}>
             Cancel
           </button>
         </div>
@@ -437,9 +437,10 @@ export default function MapPage() {
             borderRadius: 18,
             width: 320,
             zIndex: 200,
+            touchAction: "manipulation",
           }}
         >
-          <div style={{ fontSize: 14, marginBottom: 10 }}>
+          <div style={{ fontSize: 16, marginBottom: 10 }}>
             Roof Damage Severity
           </div>
 
@@ -459,17 +460,27 @@ export default function MapPage() {
             style={{
               marginTop: 12,
               width: "100%",
-              height: 70,
+              height: 80,
               borderRadius: 8,
               border: "1px solid #d1d5db",
-              padding: 8,
-              fontSize: 12,
+              padding: 10,
+              fontSize: 16, // PREVENTS iOS ZOOM
             }}
           />
 
-          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-            <button onClick={saveSeverity}>Save</button>
-            <button onClick={() => setShowSeverity(false)}>Skip</button>
+          <div style={{ display: "flex", gap: 12, marginTop: 14 }}>
+            <button
+              onClick={saveSeverity}
+              style={{ padding: "10px 16px", fontSize: 16 }}
+            >
+              Save
+            </button>
+            <button
+              onClick={() => setShowSeverity(false)}
+              style={{ padding: "10px 16px", fontSize: 16 }}
+            >
+              Skip
+            </button>
           </div>
         </div>
       )}
