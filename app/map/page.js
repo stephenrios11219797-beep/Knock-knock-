@@ -10,6 +10,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const STATUS_OPTIONS = [
   { label: "Walked", color: "#22c55e" },
   { label: "No Answer", color: "#ef4444" },
+  { label: "Not Interested", color: "#4b5563" },
   { label: "Soft Set", color: "#06b6d4" },
   { label: "Contingency", color: "#a855f7" },
   { label: "Contract", color: "#f59e0b" },
@@ -20,18 +21,17 @@ export default function MapPage() {
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
 
-  const userMarkerRef = useRef(null);
   const draftPinRef = useRef(null);
-
   const followRef = useRef(true);
   const logModeRef = useRef(false);
+  const gpsStartedRef = useRef(false); // 🔑 prevents double start
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [logMode, setLogMode] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
 
-  /* ---------------- MAP INIT (ONCE) ---------------- */
+  /* ---------------- MAP INIT ---------------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -42,14 +42,43 @@ export default function MapPage() {
       zoom: 4,
     });
 
+    map.on("load", () => {
+      map.addSource("me", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+
+      map.addLayer({
+        id: "me-accuracy",
+        type: "circle",
+        source: "me",
+        paint: {
+          "circle-radius": ["get", "accuracy"],
+          "circle-color": "#3b82f6",
+          "circle-opacity": 0.2,
+        },
+      });
+
+      map.addLayer({
+        id: "me-dot",
+        type: "circle",
+        source: "me",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#2563eb",
+        },
+      });
+    });
+
     map.on("click", (e) => {
       if (!logModeRef.current) return;
 
       draftPinRef.current?.remove();
 
-      draftPinRef.current = new mapboxgl.Marker({
-        color: "#9ca3af",
-      })
+      draftPinRef.current = new mapboxgl.Marker({ color: "#9ca3af" })
         .setLngLat(e.lngLat)
         .addTo(map);
 
@@ -68,41 +97,58 @@ export default function MapPage() {
 
   /* ---------------- GPS ---------------- */
   const enableGPS = () => {
-    if (gpsEnabled) return;
+    if (gpsStartedRef.current) return;
+    gpsStartedRef.current = true;
 
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude } = pos.coords;
-        const lngLat = [longitude, latitude];
+        const { longitude, latitude, accuracy } = pos.coords;
 
-        if (!userMarkerRef.current) {
-          userMarkerRef.current = new mapboxgl.Marker({
-            color: "#2563eb",
-          })
-            .setLngLat(lngLat)
-            .addTo(mapRef.current);
-        } else {
-          userMarkerRef.current.setLngLat(lngLat);
-        }
+        const feature = {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          properties: {
+            accuracy: Math.max(accuracy / 2, 20),
+          },
+        };
 
-        // 🔒 TRUE FREE LOOK
+        mapRef.current
+          ?.getSource("me")
+          ?.setData({
+            type: "FeatureCollection",
+            features: [feature],
+          });
+
         if (!followRef.current) return;
 
         mapRef.current.stop();
         mapRef.current.easeTo({
-          center: lngLat,
+          center: [longitude, latitude],
           zoom: 18,
           duration: 500,
         });
       },
-      () => alert("GPS permission denied"),
+      () => {
+        gpsStartedRef.current = false;
+        setGpsEnabled(false);
+        alert("GPS permission denied");
+      },
       { enableHighAccuracy: true }
     );
   };
 
-  /* ---------------- FOLLOW TOGGLE ---------------- */
+  /* ---------------- AUTO GPS ON LOAD ---------------- */
+  useEffect(() => {
+    if (!("geolocation" in navigator)) return;
+    enableGPS(); // 🔑 auto-start GPS
+  }, []);
+
+  /* ---------------- FOLLOW ---------------- */
   const toggleFollow = () => {
     followRef.current = !followRef.current;
     setFollow(followRef.current);
@@ -147,19 +193,15 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME — SMALL PILL */}
+      {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={pillBtn}>
-          Home
-        </Link>
+        <Link href="/" style={pillBtn}>Home</Link>
       </div>
 
-      {/* RIGHT — GPS / FOLLOW (UNCHANGED STYLE) */}
+      {/* GPS / FOLLOW */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         {!gpsEnabled && (
-          <button style={pillBtn} onClick={enableGPS}>
-            GPS
-          </button>
+          <button style={pillBtn} onClick={enableGPS}>GPS</button>
         )}
         {gpsEnabled && (
           <button style={pillBtn} onClick={toggleFollow}>
@@ -168,7 +210,7 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* LOG HOUSE — SAME BUTTON, STATE FEEDBACK */}
+      {/* LOG HOUSE */}
       <div
         style={{
           position: "fixed",
@@ -192,9 +234,7 @@ export default function MapPage() {
         </button>
 
         {logMode && (
-          <button style={pillBtn} onClick={cancelLogHouse}>
-            Cancel
-          </button>
+          <button style={pillBtn} onClick={cancelLogHouse}>Cancel</button>
         )}
       </div>
 
@@ -245,7 +285,7 @@ export default function MapPage() {
   );
 }
 
-/* --------- EXACT PILL STYLE (UNCHANGED) --------- */
+/* -------- PILL BUTTON (UNCHANGED) -------- */
 const pillBtn = {
   padding: "6px 12px",
   fontSize: 13,
