@@ -81,6 +81,7 @@ export default function MapPage() {
 
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
+  const [notes, setNotes] = useState("");
   const lastLogRef = useRef(null);
 
   const userPosRef = useRef(null);
@@ -170,7 +171,7 @@ export default function MapPage() {
   useEffect(() => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude, accuracy } = pos.coords;
+        const { longitude, latitude } = pos.coords;
         userPosRef.current = { lng: longitude, lat: latitude };
 
         mapRef.current?.getSource("user-location")?.setData({
@@ -179,7 +180,7 @@ export default function MapPage() {
             {
               type: "Feature",
               geometry: { type: "Point", coordinates: [longitude, latitude] },
-              properties: { accuracy: Math.max(accuracy / 2, 20) },
+              properties: { accuracy: 20 },
             },
           ],
         });
@@ -267,13 +268,14 @@ export default function MapPage() {
 
   const saveSeverity = () => {
     lastLogRef.current.severity = severity;
-    setShowSeverity(false);
+    lastLogRef.current.notes = notes || null;
     setSeverity(5);
+    setNotes("");
+    setShowSeverity(false);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      {/* Slider CSS (iOS-safe) */}
       <style>{`
         .severity-slider {
           -webkit-appearance: none;
@@ -282,7 +284,6 @@ export default function MapPage() {
           border-radius: 9999px;
           background: transparent;
         }
-
         .severity-slider::-webkit-slider-runnable-track {
           height: 14px;
           border-radius: 9999px;
@@ -295,7 +296,6 @@ export default function MapPage() {
             #e5e7eb 100%
           );
         }
-
         .severity-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
           height: 24px;
@@ -308,92 +308,6 @@ export default function MapPage() {
       `}</style>
 
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
-
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button
-          onClick={() => {
-            followRef.current = !followRef.current;
-            setFollow(followRef.current);
-          }}
-        >
-          {follow ? "Following" : "Free Look"}
-        </button>
-
-        <button
-          onClick={() => {
-            const src = mapRef.current.getSource("trail");
-            src.setData({ type: "FeatureCollection", features: [] });
-            trailOnRef.current = !trailOnRef.current;
-            setTrailOn(trailOnRef.current);
-          }}
-        >
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
-      >
-        <button
-          onClick={() => {
-            loggingRef.current = true;
-            setLoggingMode(true);
-          }}
-          style={{
-            background: loggingMode ? "#16a34a" : "white",
-            borderRadius: 999,
-            padding: "12px 18px",
-          }}
-        >
-          Log House
-        </button>
-      </div>
-
-      {showStatus && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 10,
-            borderRadius: 12,
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-            zIndex: 100,
-          }}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() => savePin(s)}
-              style={{
-                background: s.color,
-                color: "white",
-                padding: "4px 8px",
-                borderRadius: 6,
-                fontSize: 11,
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {showSeverity && (
         <div
@@ -430,17 +344,20 @@ export default function MapPage() {
             style={{ "--percent": `${severity * 10}%` }}
           />
 
-          <div
+          <textarea
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 11,
-              marginTop: 6,
+              marginTop: 12,
+              width: "100%",
+              height: 70,
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              padding: 8,
+              fontSize: 12,
             }}
-          >
-            <span>Low</span>
-            <span>High</span>
-          </div>
+          />
 
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
