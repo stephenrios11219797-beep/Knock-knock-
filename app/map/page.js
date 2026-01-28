@@ -80,15 +80,10 @@ export default function MapPage() {
   const [showStatus, setShowStatus] = useState(false);
 
   const [showSeverity, setShowSeverity] = useState(false);
-  const [severity, setSeverity] = useState(50);
+  const [severity, setSeverity] = useState(5);
   const lastLogRef = useRef(null);
 
   const userPosRef = useRef(null);
-
-  const severityTrackStyle = {
-    background:
-      "linear-gradient(90deg, #16a34a 0%, #facc15 40%, #f97316 70%, #dc2626 100%)",
-  };
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -273,11 +268,45 @@ export default function MapPage() {
   const saveSeverity = () => {
     lastLogRef.current.severity = severity;
     setShowSeverity(false);
-    setSeverity(50);
+    setSeverity(5);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
+      {/* Slider CSS (iOS-safe) */}
+      <style>{`
+        .severity-slider {
+          -webkit-appearance: none;
+          width: 100%;
+          height: 14px;
+          border-radius: 9999px;
+          background: transparent;
+        }
+
+        .severity-slider::-webkit-slider-runnable-track {
+          height: 14px;
+          border-radius: 9999px;
+          background: linear-gradient(
+            to right,
+            #16a34a 0%,
+            #facc15 calc(var(--percent) * 0.5),
+            #f97316 var(--percent),
+            #dc2626 calc(var(--percent) + 1%),
+            #e5e7eb 100%
+          );
+        }
+
+        .severity-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 24px;
+          width: 24px;
+          background: white;
+          border-radius: 50%;
+          border: 2px solid #000;
+          margin-top: -5px;
+        }
+      `}</style>
+
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
@@ -287,22 +316,41 @@ export default function MapPage() {
       </div>
 
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={() => { followRef.current = !followRef.current; setFollow(followRef.current); }}>
+        <button
+          onClick={() => {
+            followRef.current = !followRef.current;
+            setFollow(followRef.current);
+          }}
+        >
           {follow ? "Following" : "Free Look"}
         </button>
-        <button onClick={() => {
-          const src = mapRef.current.getSource("trail");
-          src.setData({ type: "FeatureCollection", features: [] });
-          trailOnRef.current = !trailOnRef.current;
-          setTrailOn(trailOnRef.current);
-        }}>
+
+        <button
+          onClick={() => {
+            const src = mapRef.current.getSource("trail");
+            src.setData({ type: "FeatureCollection", features: [] });
+            trailOnRef.current = !trailOnRef.current;
+            setTrailOn(trailOnRef.current);
+          }}
+        >
           {trailOn ? "Trail On" : "Trail Off"}
         </button>
       </div>
 
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+        }}
+      >
         <button
-          onClick={() => { loggingRef.current = true; setLoggingMode(true); }}
+          onClick={() => {
+            loggingRef.current = true;
+            setLoggingMode(true);
+          }}
           style={{
             background: loggingMode ? "#16a34a" : "white",
             borderRadius: 999,
@@ -314,9 +362,33 @@ export default function MapPage() {
       </div>
 
       {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 10,
+            borderRadius: 12,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            zIndex: 100,
+          }}
+        >
           {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11 }}>
+            <button
+              key={s.label}
+              onClick={() => savePin(s)}
+              style={{
+                background: s.color,
+                color: "white",
+                padding: "4px 8px",
+                borderRadius: 6,
+                fontSize: 11,
+              }}
+            >
               {s.label}
             </button>
           ))}
@@ -324,20 +396,52 @@ export default function MapPage() {
       )}
 
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20, borderRadius: 16, width: 300, zIndex: 200 }}>
-          <div style={{ fontSize: 14, marginBottom: 10 }}>Roof Damage Severity</div>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 22,
+            borderRadius: 18,
+            width: 320,
+            zIndex: 200,
+          }}
+        >
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Roof Damage Severity
+          </div>
+
           <input
             type="range"
             min={0}
-            max={100}
+            max={10}
             value={severity}
-            onChange={(e) => setSeverity(Number(e.target.value))}
-            style={{ width: "100%", ...severityTrackStyle }}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              setSeverity(val);
+              e.currentTarget.style.setProperty(
+                "--percent",
+                `${val * 10}%`
+              );
+            }}
+            className="severity-slider"
+            style={{ "--percent": `${severity * 10}%` }}
           />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 6 }}>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 11,
+              marginTop: 6,
+            }}
+          >
             <span>Low</span>
             <span>High</span>
           </div>
+
           <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
             <button onClick={() => setShowSeverity(false)}>Skip</button>
