@@ -8,11 +8,11 @@ import Link from "next/link";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 const STATUS_OPTIONS = [
-  { key: "walked", label: "Walked", color: "#22c55e" },
-  { key: "no_answer", label: "No Answer", color: "#ef4444" },
-  { key: "soft_set", label: "Soft Set", color: "#06b6d4" },
-  { key: "contingency", label: "Contingency", color: "#a855f7" },
-  { key: "contract", label: "Contract", color: "#f59e0b" },
+  { label: "Walked", color: "#22c55e" },
+  { label: "No Answer", color: "#ef4444" },
+  { label: "Soft Set", color: "#06b6d4" },
+  { label: "Contingency", color: "#a855f7" },
+  { label: "Contract", color: "#f59e0b" },
 ];
 
 export default function MapPage() {
@@ -23,40 +23,48 @@ export default function MapPage() {
   const userMarkerRef = useRef(null);
   const draftPinRef = useRef(null);
 
+  const followRef = useRef(true);
+  const logModeRef = useRef(false);
+
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
   const [logMode, setLogMode] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
 
-  /* ---------------- MAP INIT ---------------- */
+  /* ---------------- MAP INIT (ONCE) ---------------- */
   useEffect(() => {
     if (mapRef.current) return;
 
-    mapRef.current = new mapboxgl.Map({
+    const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 4,
     });
 
-    mapRef.current.on("click", (e) => {
-      if (!logMode) return;
+    map.on("click", (e) => {
+      if (!logModeRef.current) return;
 
       draftPinRef.current?.remove();
 
-      draftPinRef.current = new mapboxgl.Marker({ color: "#9ca3af" })
+      draftPinRef.current = new mapboxgl.Marker({
+        color: "#9ca3af",
+      })
         .setLngLat(e.lngLat)
-        .addTo(mapRef.current);
+        .addTo(map);
 
       setShowStatusPicker(true);
     });
 
+    mapRef.current = map;
+
     return () => {
-      watchIdRef.current &&
+      if (watchIdRef.current) {
         navigator.geolocation.clearWatch(watchIdRef.current);
-      mapRef.current?.remove();
+      }
+      map.remove();
     };
-  }, [logMode]);
+  }, []);
 
   /* ---------------- GPS ---------------- */
   const enableGPS = () => {
@@ -67,44 +75,46 @@ export default function MapPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude } = pos.coords;
+        const lngLat = [longitude, latitude];
 
         if (!userMarkerRef.current) {
           userMarkerRef.current = new mapboxgl.Marker({
             color: "#2563eb",
           })
-            .setLngLat([longitude, latitude])
+            .setLngLat(lngLat)
             .addTo(mapRef.current);
         } else {
-          userMarkerRef.current.setLngLat([longitude, latitude]);
+          userMarkerRef.current.setLngLat(lngLat);
         }
 
-        // 🔑 HARD STOP FOLLOW WHEN FREE LOOK
-        if (follow) {
-          mapRef.current.stop(); // cancel any active animation
-          mapRef.current.easeTo({
-            center: [longitude, latitude],
-            zoom: 18,
-            duration: 500,
-          });
-        }
+        // 🔒 TRUE FREE LOOK
+        if (!followRef.current) return;
+
+        mapRef.current.stop();
+        mapRef.current.easeTo({
+          center: lngLat,
+          zoom: 18,
+          duration: 500,
+        });
       },
       () => alert("GPS permission denied"),
       { enableHighAccuracy: true }
     );
   };
 
-  /* ---------------- FREE LOOK TOGGLE ---------------- */
+  /* ---------------- FOLLOW TOGGLE ---------------- */
   const toggleFollow = () => {
-    setFollow((prev) => {
-      if (prev === true) {
-        mapRef.current?.stop(); // 🔑 stop snap-back immediately
-      }
-      return !prev;
-    });
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
+
+    if (!followRef.current) {
+      mapRef.current?.stop();
+    }
   };
 
   /* ---------------- LOG HOUSE ---------------- */
   const startLogHouse = () => {
+    logModeRef.current = true;
     setLogMode(true);
     setShowStatusPicker(false);
   };
@@ -112,6 +122,7 @@ export default function MapPage() {
   const cancelLogHouse = () => {
     draftPinRef.current?.remove();
     draftPinRef.current = null;
+    logModeRef.current = false;
     setLogMode(false);
     setShowStatusPicker(false);
   };
@@ -127,6 +138,7 @@ export default function MapPage() {
       .addTo(mapRef.current);
 
     draftPinRef.current = null;
+    logModeRef.current = false;
     setLogMode(false);
     setShowStatusPicker(false);
   };
@@ -135,28 +147,28 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME */}
+      {/* HOME — SMALL PILL */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={btnStyle}>
-          ← Home
+        <Link href="/" style={pillBtn}>
+          Home
         </Link>
       </div>
 
-      {/* GPS + FOLLOW (UNCHANGED POSITION / SIZE) */}
+      {/* RIGHT — GPS / FOLLOW (UNCHANGED STYLE) */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         {!gpsEnabled && (
-          <button style={btnStyle} onClick={enableGPS}>
-            Enable GPS
+          <button style={pillBtn} onClick={enableGPS}>
+            GPS
           </button>
         )}
         {gpsEnabled && (
-          <button style={btnStyle} onClick={toggleFollow}>
-            {follow ? "Following" : "Free Look"}
+          <button style={pillBtn} onClick={toggleFollow}>
+            {follow ? "Lock" : "Free"}
           </button>
         )}
       </div>
 
-      {/* LOG HOUSE */}
+      {/* LOG HOUSE — SAME BUTTON, STATE FEEDBACK */}
       <div
         style={{
           position: "fixed",
@@ -165,13 +177,13 @@ export default function MapPage() {
           transform: "translateX(-50%)",
           zIndex: 50,
           display: "flex",
-          gap: 12,
+          gap: 10,
         }}
       >
         <button
           style={{
-            ...btnStyle,
-            background: logMode ? "#22c55e" : "white",
+            ...pillBtn,
+            background: logMode ? "#22c55e" : "rgba(255,255,255,0.9)",
             color: logMode ? "white" : "black",
           }}
           onClick={startLogHouse}
@@ -180,7 +192,7 @@ export default function MapPage() {
         </button>
 
         {logMode && (
-          <button style={btnStyle} onClick={cancelLogHouse}>
+          <button style={pillBtn} onClick={cancelLogHouse}>
             Cancel
           </button>
         )}
@@ -195,32 +207,31 @@ export default function MapPage() {
             left: "50%",
             transform: "translateX(-50%)",
             background: "white",
-            padding: 14,
-            borderRadius: 14,
+            padding: 12,
+            borderRadius: 12,
+            zIndex: 60,
             display: "flex",
             flexDirection: "column",
-            gap: 10,
-            zIndex: 60,
+            gap: 8,
           }}
         >
           {STATUS_OPTIONS.map((opt) => (
             <button
-              key={opt.key}
+              key={opt.label}
               onClick={() => savePin(opt.color)}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
+                gap: 8,
+                padding: "6px 10px",
                 borderRadius: 10,
-                border: "1px solid #ddd",
                 background: "white",
               }}
             >
               <span
                 style={{
-                  width: 14,
-                  height: 14,
+                  width: 12,
+                  height: 12,
                   borderRadius: "50%",
                   background: opt.color,
                 }}
@@ -234,10 +245,12 @@ export default function MapPage() {
   );
 }
 
-const btnStyle = {
-  padding: "10px 14px",
-  background: "white",
-  borderRadius: 10,
+/* --------- EXACT PILL STYLE (UNCHANGED) --------- */
+const pillBtn = {
+  padding: "6px 12px",
+  fontSize: 13,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.9)",
+  border: "none",
   fontWeight: 600,
-  border: "1px solid #ddd",
 };
