@@ -7,6 +7,7 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+/* --------- STATUS OPTIONS --------- */
 const STATUS_OPTIONS = [
   { label: "Walked", color: "#22c55e" },
   { label: "No Answer", color: "#ef4444" },
@@ -16,6 +17,12 @@ const STATUS_OPTIONS = [
   { label: "Contract", color: "#f59e0b" },
 ];
 
+/* --------- DAY KEY --------- */
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
@@ -24,7 +31,9 @@ export default function MapPage() {
   const draftPinRef = useRef(null);
   const followRef = useRef(true);
   const logModeRef = useRef(false);
-  const gpsStartedRef = useRef(false); // 🔑 prevents double start
+  const gpsStartedRef = useRef(false);
+
+  const routeCoordsRef = useRef([]);
 
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
@@ -43,12 +52,10 @@ export default function MapPage() {
     });
 
     map.on("load", () => {
+      /* ---- ME DOT ---- */
       map.addSource("me", {
         type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: [],
-        },
+        data: { type: "FeatureCollection", features: [] },
       });
 
       map.addLayer({
@@ -71,6 +78,43 @@ export default function MapPage() {
           "circle-color": "#2563eb",
         },
       });
+
+      /* ---- ROUTE MEMORY ---- */
+      map.addSource("route", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: [] },
+        },
+      });
+
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route",
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 3,
+          "line-opacity": 0.35,
+        },
+      });
+
+      /* ---- RESTORE TODAY'S ROUTE ---- */
+      const saved = JSON.parse(localStorage.getItem("route-memory") || "{}");
+      const key = todayKey();
+
+      if (saved.date === key && Array.isArray(saved.coords)) {
+        routeCoordsRef.current = saved.coords;
+        map.getSource("route")?.setData({
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: routeCoordsRef.current,
+          },
+        });
+      } else {
+        localStorage.removeItem("route-memory");
+      }
     });
 
     map.on("click", (e) => {
@@ -88,9 +132,8 @@ export default function MapPage() {
     mapRef.current = map;
 
     return () => {
-      if (watchIdRef.current) {
+      watchIdRef.current &&
         navigator.geolocation.clearWatch(watchIdRef.current);
-      }
       map.remove();
     };
   }, []);
@@ -99,36 +142,56 @@ export default function MapPage() {
   const enableGPS = () => {
     if (gpsStartedRef.current) return;
     gpsStartedRef.current = true;
-
     setGpsEnabled(true);
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
+        const lngLat = [longitude, latitude];
 
-        const feature = {
+        /* ME DOT */
+        mapRef.current?.getSource("me")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: lngLat },
+              properties: { accuracy: Math.max(accuracy / 2, 20) },
+            },
+          ],
+        });
+
+        /* ROUTE MEMORY */
+        routeCoordsRef.current.push(lngLat);
+
+        // cap to prevent runaway size
+        if (routeCoordsRef.current.length > 5000) {
+          routeCoordsRef.current.shift();
+        }
+
+        mapRef.current?.getSource("route")?.setData({
           type: "Feature",
           geometry: {
-            type: "Point",
-            coordinates: [longitude, latitude],
+            type: "LineString",
+            coordinates: routeCoordsRef.current,
           },
-          properties: {
-            accuracy: Math.max(accuracy / 2, 20),
-          },
-        };
+        });
 
-        mapRef.current
-          ?.getSource("me")
-          ?.setData({
-            type: "FeatureCollection",
-            features: [feature],
-          });
+        /* SAVE TO LOCAL STORAGE */
+        localStorage.setItem(
+          "route-memory",
+          JSON.stringify({
+            date: todayKey(),
+            coords: routeCoordsRef.current,
+          })
+        );
 
+        /* FOLLOW */
         if (!followRef.current) return;
 
         mapRef.current.stop();
         mapRef.current.easeTo({
-          center: [longitude, latitude],
+          center: lngLat,
           zoom: 18,
           duration: 500,
         });
@@ -142,20 +205,16 @@ export default function MapPage() {
     );
   };
 
-  /* ---------------- AUTO GPS ON LOAD ---------------- */
+  /* AUTO GPS */
   useEffect(() => {
-    if (!("geolocation" in navigator)) return;
-    enableGPS(); // 🔑 auto-start GPS
+    if ("geolocation" in navigator) enableGPS();
   }, []);
 
   /* ---------------- FOLLOW ---------------- */
   const toggleFollow = () => {
     followRef.current = !followRef.current;
     setFollow(followRef.current);
-
-    if (!followRef.current) {
-      mapRef.current?.stop();
-    }
+    if (!followRef.current) mapRef.current?.stop();
   };
 
   /* ---------------- LOG HOUSE ---------------- */
@@ -193,12 +252,10 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link href="/" style={pillBtn}>Home</Link>
       </div>
 
-      {/* GPS / FOLLOW */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         {!gpsEnabled && (
           <button style={pillBtn} onClick={enableGPS}>GPS</button>
@@ -210,7 +267,6 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* LOG HOUSE */}
       <div
         style={{
           position: "fixed",
@@ -238,7 +294,6 @@ export default function MapPage() {
         )}
       </div>
 
-      {/* STATUS PICKER */}
       {showStatusPicker && (
         <div
           style={{
@@ -285,7 +340,7 @@ export default function MapPage() {
   );
 }
 
-/* -------- PILL BUTTON (UNCHANGED) -------- */
+/* -------- PILL BUTTON -------- */
 const pillBtn = {
   padding: "6px 12px",
   fontSize: 13,
