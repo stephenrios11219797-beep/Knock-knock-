@@ -16,9 +16,37 @@ const STATUS_OPTIONS = [
   { label: "Not Interested", color: "#4b5563" },
 ];
 
+const RADIUS_METERS = 4000;
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
-/* ---------- CUSTOM PIN ---------- */
+/* ---------- STORAGE ---------- */
+const loadAllPins = () =>
+  JSON.parse(localStorage.getItem("pins") || "{}");
+
+const savePinToStorage = (pin) => {
+  const all = loadAllPins();
+  const today = todayKey();
+  all[today] = [...(all[today] || []), pin];
+  localStorage.setItem("pins", JSON.stringify(all));
+};
+
+/* ---------- UTILS ---------- */
+const haversine = (a, b) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/* ---------- PIN ---------- */
 function createPin(color) {
   const el = document.createElement("div");
   el.innerHTML = `
@@ -42,11 +70,14 @@ export default function MapPage() {
   const activeSegmentRef = useRef(null);
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
+  const renderedPinsRef = useRef([]);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
+
+  const userPosRef = useRef(null);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -62,7 +93,6 @@ export default function MapPage() {
     mapRef.current = map;
 
     map.on("load", () => {
-      /* USER LOCATION */
       map.addSource("user-location", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -89,13 +119,9 @@ export default function MapPage() {
         },
       });
 
-      /* TRAIL — MULTI SEGMENT */
       map.addSource("trail", {
         type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: [],
-        },
+        data: { type: "FeatureCollection", features: [] },
       });
 
       map.addLayer({
@@ -108,14 +134,11 @@ export default function MapPage() {
         },
       });
 
-      /* RESTORE TODAY TRAIL */
-      const saved = JSON.parse(localStorage.getItem("trail") || "{}");
-      if (saved.date === todayKey()) {
-        map.getSource("trail").setData(saved.data);
-      } else {
-        localStorage.removeItem("trail");
-      }
+      // ✅ FIX: render pins immediately after map loads
+      setTimeout(renderNearbyPins, 300);
     });
+
+    map.on("moveend", renderNearbyPins);
 
     map.on("click", (e) => {
       if (!loggingRef.current) return;
@@ -143,34 +166,29 @@ export default function MapPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
+        userPosRef.current = { lng: longitude, lat: latitude };
 
         mapRef.current?.getSource("user-location")?.setData({
           type: "FeatureCollection",
           features: [
             {
               type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude],
-              },
+              geometry: { type: "Point", coordinates: [longitude, latitude] },
               properties: { accuracy: Math.max(accuracy / 2, 20) },
             },
           ],
         });
 
-        /* RECORD TRAIL ONLY IF ON */
+        // ✅ FIX: force render on first GPS lock
+        renderNearbyPins();
+
         if (trailOnRef.current && activeSegmentRef.current) {
           activeSegmentRef.current.geometry.coordinates.push([
             longitude,
             latitude,
           ]);
-
-          const src = mapRef.current.getSource("trail");
-          src.setData(src._data);
-
-          localStorage.setItem(
-            "trail",
-            JSON.stringify({ date: todayKey(), data: src._data })
+          mapRef.current.getSource("trail").setData(
+            mapRef.current.getSource("trail")._data
           );
         }
 
@@ -186,6 +204,37 @@ export default function MapPage() {
     );
   }, []);
 
+  /* ---------- PIN RENDERING ---------- */
+  const renderNearbyPins = () => {
+    renderedPinsRef.current.forEach((m) => m.remove());
+    renderedPinsRef.current = [];
+
+    if (!userPosRef.current || !mapRef.current) return;
+
+    const bounds = mapRef.current.getBounds();
+    const all = loadAllPins()[todayKey()] || [];
+
+    all.forEach((p) => {
+      const dist = haversine(userPosRef.current, {
+        lng: p.lngLat.lng,
+        lat: p.lngLat.lat,
+      });
+
+      if (
+        dist <= RADIUS_METERS &&
+        bounds.contains([p.lngLat.lng, p.lngLat.lat])
+      ) {
+        const marker = new mapboxgl.Marker({
+          element: createPin(p.color),
+        })
+          .setLngLat(p.lngLat)
+          .addTo(mapRef.current);
+
+        renderedPinsRef.current.push(marker);
+      }
+    });
+  };
+
   /* ---------- CONTROLS ---------- */
   const toggleFollow = () => {
     followRef.current = !followRef.current;
@@ -194,18 +243,16 @@ export default function MapPage() {
 
   const toggleTrail = () => {
     const src = mapRef.current.getSource("trail");
+    src.setData({ type: "FeatureCollection", features: [] });
 
     if (!trailOnRef.current) {
-      /* TURN ON → START NEW SEGMENT */
-      const newSegment = {
+      const segment = {
         type: "Feature",
         geometry: { type: "LineString", coordinates: [] },
       };
-
-      src._data.features.push(newSegment);
-      activeSegmentRef.current = newSegment;
+      src._data.features.push(segment);
+      activeSegmentRef.current = segment;
     } else {
-      /* TURN OFF → STOP RECORDING */
       activeSegmentRef.current = null;
     }
 
@@ -230,9 +277,8 @@ export default function MapPage() {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    new mapboxgl.Marker({ element: createPin(color) })
-      .setLngLat(lngLat)
-      .addTo(mapRef.current);
+    savePinToStorage({ lngLat, color, time: Date.now() });
+    renderNearbyPins();
 
     pendingPinRef.current = null;
     loggingRef.current = false;
@@ -244,14 +290,12 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
       </div>
 
-      {/* TOP RIGHT */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         <button onClick={toggleFollow}>
           {follow ? "Following" : "Free Look"}
@@ -261,7 +305,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* LOG HOUSE */}
       <div
         style={{
           position: "fixed",
@@ -283,7 +326,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* STATUS SELECTOR */}
       {showStatus && (
         <div
           style={{
