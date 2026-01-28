@@ -79,12 +79,21 @@ export default function MapPage() {
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
 
-  // 🔥 NEW — Severity Modal State
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(50);
   const lastLogRef = useRef(null);
 
   const userPosRef = useRef(null);
+
+  const severityGradient = (value) => {
+    return {
+      background: `linear-gradient(90deg,
+        #16a34a 0%,
+        #facc15 40%,
+        #f97316 70%,
+        #dc2626 100%)`,
+    };
+  };
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -240,44 +249,6 @@ export default function MapPage() {
     });
   };
 
-  /* ---------- CONTROLS ---------- */
-  const toggleFollow = () => {
-    followRef.current = !followRef.current;
-    setFollow(followRef.current);
-  };
-
-  const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
-    trailOnRef.current = !trailOnRef.current;
-    setTrailOn(trailOnRef.current);
-  };
-
-  const armLogHouse = () => {
-    loggingRef.current = true;
-    setLoggingMode(true);
-  };
-
-  const cancelLog = () => {
-    pendingPinRef.current?.remove();
-    pendingPinRef.current = null;
-    loggingRef.current = false;
-    setLoggingMode(false);
-    setShowStatus(false);
-  };
-
   const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
@@ -311,51 +282,57 @@ export default function MapPage() {
   };
 
   return (
-    <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
-
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
-        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
-          Log House
-        </button>
-      </div>
-
-      {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
-          {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11 }}>
-              {s.label}
-            </button>
-          ))}
-          <button onClick={cancelLog} style={{ fontSize: 11 }}>Cancel</button>
-        </div>
-      )}
+    <>
+      <div ref={mapContainerRef} style={{ height: "100vh", width: "100vw" }} />
 
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 120, left: "50%", transform: "translateX(-50%)", background: "white", padding: 14, borderRadius: 12, zIndex: 200 }}>
-          <div style={{ fontSize: 13, marginBottom: 6 }}>Roof Damage Severity</div>
-          <input type="range" min={0} max={100} value={severity} onChange={(e) => setSeverity(Number(e.target.value))} />
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 20,
+            borderRadius: 16,
+            width: 280,
+            zIndex: 200,
+          }}
+        >
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Roof Damage Severity
+          </div>
+
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={severity}
+            onChange={(e) => setSeverity(Number(e.target.value))}
+            style={{
+              width: "100%",
+              ...severityGradient(severity),
+            }}
+          />
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 11,
+              marginTop: 6,
+            }}
+          >
+            <span>Low</span>
+            <span>High</span>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
             <button onClick={() => setShowSeverity(false)}>Skip</button>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
