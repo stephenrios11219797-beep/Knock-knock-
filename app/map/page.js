@@ -23,8 +23,12 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
-const saveAllPins = (data) =>
-  localStorage.setItem("pins", JSON.stringify(data));
+const savePinToStorage = (pin) => {
+  const all = loadAllPins();
+  const today = todayKey();
+  all[today] = [...(all[today] || []), pin];
+  localStorage.setItem("pins", JSON.stringify(all));
+};
 
 /* ---------- UTILS ---------- */
 const haversine = (a, b) => {
@@ -42,28 +46,20 @@ const haversine = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 
-/* ---------- PIN (BIGGER HITBOX) ---------- */
+/* ---------- PIN ---------- */
 function createPin(color) {
-  const wrapper = document.createElement("div");
-  wrapper.style.width = "44px";
-  wrapper.style.height = "44px";
-  wrapper.style.display = "flex";
-  wrapper.style.alignItems = "center";
-  wrapper.style.justifyContent = "center";
-  wrapper.style.transform = "translate(-50%, -100%)";
-  wrapper.style.cursor = "pointer";
-
-  const pin = document.createElement("div");
-  pin.innerHTML = `
+  const el = document.createElement("div");
+  el.style.padding = "12px";
+  el.style.cursor = "pointer";
+  el.innerHTML = `
     <svg width="24" height="36" viewBox="0 0 24 36">
       <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z"
         fill="${color}" />
       <circle cx="12" cy="12" r="4" fill="white" />
     </svg>
   `;
-
-  wrapper.appendChild(pin);
-  return wrapper;
+  el.style.transform = "translate(-50%, -100%)";
+  return el;
 }
 
 export default function MapPage() {
@@ -82,7 +78,11 @@ export default function MapPage() {
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
-  const [editPin, setEditPin] = useState(null);
+
+  // 🔥 NEW — Severity Modal State
+  const [showSeverity, setShowSeverity] = useState(false);
+  const [severity, setSeverity] = useState(50);
+  const lastLogRef = useRef(null);
 
   const userPosRef = useRef(null);
 
@@ -219,7 +219,7 @@ export default function MapPage() {
     const bounds = mapRef.current.getBounds();
     const all = loadAllPins()[todayKey()] || [];
 
-    all.forEach((p, idx) => {
+    all.forEach((p) => {
       const dist = haversine(userPosRef.current, {
         lng: p.lngLat.lng,
         lat: p.lngLat.lat,
@@ -234,10 +234,6 @@ export default function MapPage() {
         })
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
-
-        marker.getElement().onclick = () => {
-          setEditPin({ ...p, index: idx });
-        };
 
         renderedPinsRef.current.push(marker);
       }
@@ -282,14 +278,23 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
-  const savePin = (color) => {
+  const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const all = loadAllPins();
-    const today = todayKey();
-    all[today] = [...(all[today] || []), { lngLat, color, time: Date.now() }];
-    saveAllPins(all);
+    const log = {
+      lngLat,
+      color: status.color,
+      status: status.label,
+      time: Date.now(),
+    };
+
+    savePinToStorage(log);
+    lastLogRef.current = log;
+
+    if (status.label === "No Answer") {
+      setShowSeverity(true);
+    }
 
     renderNearbyPins();
 
@@ -299,22 +304,10 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
-  const updatePinStatus = (color) => {
-    const all = loadAllPins();
-    const today = todayKey();
-    all[today][editPin.index].color = color;
-    saveAllPins(all);
-    setEditPin(null);
-    renderNearbyPins();
-  };
-
-  const deletePin = () => {
-    const all = loadAllPins();
-    const today = todayKey();
-    all[today].splice(editPin.index, 1);
-    saveAllPins(all);
-    setEditPin(null);
-    renderNearbyPins();
+  const saveSeverity = () => {
+    lastLogRef.current.severity = severity;
+    setShowSeverity(false);
+    setSeverity(50);
   };
 
   return (
@@ -336,76 +329,31 @@ export default function MapPage() {
         </button>
       </div>
 
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
-      >
-        <button
-          onClick={armLogHouse}
-          style={{
-            background: loggingMode ? "#16a34a" : "white",
-            borderRadius: 999,
-            padding: "12px 18px",
-          }}
-        >
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
+        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
           Log House
         </button>
       </div>
 
-      {(showStatus || editPin) && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 10,
-            borderRadius: 12,
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-            justifyContent: "center",
-            maxWidth: "90vw",
-            zIndex: 100,
-          }}
-        >
+      {showStatus && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
           {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() =>
-                editPin ? updatePinStatus(s.color) : savePin(s.color)
-              }
-              style={{
-                background: s.color,
-                color: "white",
-                padding: "4px 8px",
-                borderRadius: 6,
-                fontSize: 11,
-              }}
-            >
+            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "4px 8px", borderRadius: 6, fontSize: 11 }}>
               {s.label}
             </button>
           ))}
-          <button
-            onClick={() => (editPin ? setEditPin(null) : cancelLog())}
-            style={{ fontSize: 11 }}
-          >
-            Cancel
-          </button>
-          {editPin && (
-            <button
-              onClick={deletePin}
-              style={{ fontSize: 11, color: "red" }}
-            >
-              Delete
-            </button>
-          )}
+          <button onClick={cancelLog} style={{ fontSize: 11 }}>Cancel</button>
+        </div>
+      )}
+
+      {showSeverity && (
+        <div style={{ position: "fixed", bottom: 120, left: "50%", transform: "translateX(-50%)", background: "white", padding: 14, borderRadius: 12, zIndex: 200 }}>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>Roof Damage Severity</div>
+          <input type="range" min={0} max={100} value={severity} onChange={(e) => setSeverity(Number(e.target.value))} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button onClick={saveSeverity}>Save</button>
+            <button onClick={() => setShowSeverity(false)}>Skip</button>
+          </div>
         </div>
       )}
     </div>
