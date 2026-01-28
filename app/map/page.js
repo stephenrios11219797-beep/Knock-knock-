@@ -13,7 +13,7 @@ const STATUS_OPTIONS = [
   { label: "Soft Set", color: "#2563eb" },
   { label: "Contingency", color: "#7c3aed" },
   { label: "Contract", color: "#d4af37" },
-  { label: "Not Interested", color: "#374151" },
+  { label: "Not Interested", color: "#4b5563" },
 ];
 
 export default function MapPage() {
@@ -22,18 +22,14 @@ export default function MapPage() {
   const watchIdRef = useRef(null);
 
   const followRef = useRef(true);
-  const trailRecordingRef = useRef(false);
-  const trailCoordsRef = useRef([]);
-
+  const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
 
-  const [gpsEnabled, setGpsEnabled] = useState(false);
   const [follow, setFollow] = useState(true);
-  const [trailRecording, setTrailRecording] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
 
-  // INIT MAP
+  /* ---------------- MAP INIT ---------------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -45,25 +41,42 @@ export default function MapPage() {
     });
 
     mapRef.current.on("load", () => {
-      mapRef.current.addSource("route", {
+      // USER LOCATION SOURCE
+      mapRef.current.addSource("user-location", {
         type: "geojson",
-        data: { type: "Feature", geometry: { type: "LineString", coordinates: [] } },
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
       });
 
+      // ACCURACY HALO
       mapRef.current.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
+        id: "accuracy-halo",
+        type: "circle",
+        source: "user-location",
         paint: {
-          "line-color": "#2563eb",
-          "line-width": 4,
-          "line-opacity": 0.8,
+          "circle-radius": ["get", "accuracy"],
+          "circle-color": "#3b82f6",
+          "circle-opacity": 0.2,
+        },
+      });
+
+      // BLUE DOT
+      mapRef.current.addLayer({
+        id: "user-dot",
+        type: "circle",
+        source: "user-location",
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#2563eb",
         },
       });
     });
 
+    // CLICK HANDLER (REGISTERED ONCE)
     mapRef.current.on("click", (e) => {
-      if (!loggingMode) return;
+      if (!loggingRef.current) return;
 
       if (pendingPinRef.current) {
         pendingPinRef.current.remove();
@@ -82,21 +95,29 @@ export default function MapPage() {
       if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
       mapRef.current?.remove();
     };
-  }, [loggingMode]);
-
-  // AUTO GPS
-  useEffect(() => {
-    enableGPS();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const enableGPS = () => {
-    if (gpsEnabled) return;
-    setGpsEnabled(true);
-
+  /* ---------------- GPS AUTO START ---------------- */
+  useEffect(() => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude } = pos.coords;
+        const { longitude, latitude, accuracy } = pos.coords;
+
+        mapRef.current?.getSource("user-location")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [longitude, latitude],
+              },
+              properties: {
+                accuracy: Math.max(accuracy / 2, 20),
+              },
+            },
+          ],
+        });
 
         if (followRef.current) {
           mapRef.current.easeTo({
@@ -104,37 +125,29 @@ export default function MapPage() {
             zoom: 18,
           });
         }
-
-        if (trailRecordingRef.current) {
-          trailCoordsRef.current.push([longitude, latitude]);
-          mapRef.current.getSource("route")?.setData({
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: trailCoordsRef.current },
-          });
-        }
       },
-      () => alert("GPS permission denied"),
+      () => {},
       { enableHighAccuracy: true }
     );
-  };
+  }, []);
 
+  /* ---------------- CONTROLS ---------------- */
   const toggleFollow = () => {
     followRef.current = !followRef.current;
     setFollow(followRef.current);
   };
 
-  const toggleTrailRecording = () => {
-    const next = !trailRecordingRef.current;
-    trailRecordingRef.current = next;
-    setTrailRecording(next);
+  const armLogHouse = () => {
+    loggingRef.current = true;
+    setLoggingMode(true);
+  };
 
-    if (next) {
-      trailCoordsRef.current = [];
-      mapRef.current.getSource("route")?.setData({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      });
-    }
+  const cancelLog = () => {
+    pendingPinRef.current?.remove();
+    pendingPinRef.current = null;
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
   };
 
   const savePin = (color) => {
@@ -143,15 +156,16 @@ export default function MapPage() {
     pendingPinRef.current.getElement().style.backgroundColor = color;
 
     pendingPinRef.current = null;
-    setShowStatus(false);
+    loggingRef.current = false;
     setLoggingMode(false);
+    setShowStatus(false);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME */}
+      {/* TOP LEFT — HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link
           href="/"
@@ -167,26 +181,34 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* RIGHT CONTROLS */}
+      {/* TOP RIGHT — FOLLOW */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={toggleFollow}>
-            {follow ? "Following" : "Free Look"}
-          </button>
+        <button onClick={toggleFollow}>
+          {follow ? "Following" : "Free Look"}
+        </button>
+      </div>
 
-          <button onClick={toggleTrailRecording}>
-            {trailRecording ? "Trail On" : "Trail Off"}
-          </button>
-
-          <button
-            onClick={() => setLoggingMode(true)}
-            style={{
-              background: loggingMode ? "#16a34a" : "white",
-            }}
-          >
-            Log House
-          </button>
-        </div>
+      {/* LOWER MIDDLE — LOG HOUSE (RESTORED) */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+        }}
+      >
+        <button
+          onClick={armLogHouse}
+          style={{
+            background: loggingMode ? "#16a34a" : "white",
+            borderRadius: 999,
+            padding: "12px 18px",
+            fontWeight: 600,
+          }}
+        >
+          Log House
+        </button>
       </div>
 
       {/* STATUS SELECTOR */}
@@ -194,7 +216,7 @@ export default function MapPage() {
         <div
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: 90,
             left: "50%",
             transform: "translateX(-50%)",
             background: "white",
@@ -220,6 +242,17 @@ export default function MapPage() {
               {s.label}
             </button>
           ))}
+
+          <button
+            onClick={cancelLog}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+            }}
+          >
+            Cancel
+          </button>
         </div>
       )}
     </div>
