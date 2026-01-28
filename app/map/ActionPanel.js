@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function ActionPanel({ selectedPin, clearSelectedPin }) {
+export default function ActionPanel() {
   const [lastAction, setLastAction] = useState(null);
   const [showUndo, setShowUndo] = useState(false);
 
@@ -23,23 +23,24 @@ export default function ActionPanel({ selectedPin, clearSelectedPin }) {
 
   return (
     <>
-      {/* Action Panel */}
       <div style={panelStyle}>
         <div style={rowStyle}>
-          <button onClick={() => handleAction("Knock")}>Knock</button>
-          <button onClick={() => handleAction("Talk")}>Talk</button>
-          <button onClick={() => handleAction("Walk")}>Walk</button>
-          <button onClick={() => handleAction("No Answer")}>No Answer</button>
+          <button style={buttonStyle} onClick={() => handleAction("Knock")}>Knock</button>
+          <button style={buttonStyle} onClick={() => handleAction("Talk")}>Talk</button>
+          <button style={buttonStyle} onClick={() => handleAction("Walk")}>Walk</button>
+          <button style={buttonStyle} onClick={() => handleAction("No Answer")}>No Answer</button>
         </div>
 
         <div style={rowStyle}>
-          <button style={dangerStyle} onClick={() => handleAction("DNK")}>
+          <button style={{ ...buttonStyle, ...dangerStyle }} onClick={() => handleAction("DNK")}>
             DNK
           </button>
-          <button onClick={() => handleAction("Contingency")}>
+          <button style={buttonStyle} onClick={() => handleAction("Contingency")}>
             Contingency
           </button>
-          <button onClick={() => handleAction("Contract")}>Contract</button>
+          <button style={buttonStyle} onClick={() => handleAction("Contract")}>
+            Contract
+          </button>
         </div>
 
         <div style={rowStyle}>
@@ -50,76 +51,12 @@ export default function ActionPanel({ selectedPin, clearSelectedPin }) {
         </div>
       </div>
 
-      {/* Undo Toast */}
       {showUndo && (
         <div style={toastStyle}>
           <span>{lastAction} logged</span>
           <button onClick={undoAction} style={undoButtonStyle}>
             Undo
           </button>
-        </div>
-      )}
-
-      {/* PIN DETAILS MODAL */}
-      {selectedPin && (
-        <div
-          onClick={clearSelectedPin}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            zIndex: 50,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              width: "90%",
-              maxWidth: 320,
-              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <strong>House Details</strong>
-              <button
-                onClick={clearSelectedPin}
-                style={{
-                  fontSize: 16,
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 14 }}>
-              <div><strong>Status:</strong> {selectedPin.type}</div>
-              <div><strong>Logged:</strong> {selectedPin.timestamp}</div>
-
-              {selectedPin.severity !== undefined && (
-                <div style={{ marginTop: 6 }}>
-                  <strong>Severity:</strong> {selectedPin.severity}/10
-                </div>
-              )}
-
-              {selectedPin.notes && (
-                <div style={{ marginTop: 6 }}>
-                  <strong>Notes:</strong>
-                  <div style={{ fontSize: 13, marginTop: 2 }}>
-                    {selectedPin.notes}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
     </>
@@ -143,6 +80,10 @@ const rowStyle = {
   display: "flex",
   gap: "8px",
   marginBottom: "8px",
+};
+
+const buttonStyle = {
+  padding: "10px 14px",
 };
 
 const dangerStyle = {
