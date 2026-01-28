@@ -67,10 +67,14 @@ export default function MapPage() {
 
   const followRef = useRef(true);
   const trailOnRef = useRef(false);
-  const activeSegmentRef = useRef(null);
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
   const renderedPinsRef = useRef([]);
+
+  const trailGeoRef = useRef({
+    type: "FeatureCollection",
+    features: [],
+  });
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -121,7 +125,7 @@ export default function MapPage() {
 
       map.addSource("trail", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
+        data: trailGeoRef.current,
       });
 
       map.addLayer({
@@ -134,8 +138,7 @@ export default function MapPage() {
         },
       });
 
-      // ✅ FIX: render pins immediately after map loads
-      setTimeout(renderNearbyPins, 300);
+      renderNearbyPins();
     });
 
     map.on("moveend", renderNearbyPins);
@@ -179,17 +182,16 @@ export default function MapPage() {
           ],
         });
 
-        // ✅ FIX: force render on first GPS lock
         renderNearbyPins();
 
-        if (trailOnRef.current && activeSegmentRef.current) {
-          activeSegmentRef.current.geometry.coordinates.push([
-            longitude,
-            latitude,
-          ]);
-          mapRef.current.getSource("trail").setData(
-            mapRef.current.getSource("trail")._data
-          );
+        if (trailOnRef.current) {
+          const line = trailGeoRef.current.features[0];
+          if (line) {
+            line.geometry.coordinates.push([longitude, latitude]);
+            mapRef.current
+              .getSource("trail")
+              .setData(trailGeoRef.current);
+          }
         }
 
         if (followRef.current) {
@@ -242,22 +244,24 @@ export default function MapPage() {
   };
 
   const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
     trailOnRef.current = !trailOnRef.current;
     setTrailOn(trailOnRef.current);
+
+    trailGeoRef.current = {
+      type: "FeatureCollection",
+      features: trailOnRef.current
+        ? [
+            {
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: [] },
+            },
+          ]
+        : [],
+    };
+
+    mapRef.current
+      ?.getSource("trail")
+      ?.setData(trailGeoRef.current);
   };
 
   const armLogHouse = () => {
