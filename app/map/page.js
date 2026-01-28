@@ -23,12 +23,8 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
-const savePinToStorage = (pin) => {
-  const all = loadAllPins();
-  const today = todayKey();
-  all[today] = [...(all[today] || []), pin];
-  localStorage.setItem("pins", JSON.stringify(all));
-};
+const saveAllPins = (data) =>
+  localStorage.setItem("pins", JSON.stringify(data));
 
 /* ---------- UTILS ---------- */
 const haversine = (a, b) => {
@@ -67,19 +63,16 @@ export default function MapPage() {
 
   const followRef = useRef(true);
   const trailOnRef = useRef(false);
+  const activeSegmentRef = useRef(null);
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
   const renderedPinsRef = useRef([]);
-
-  const trailGeoRef = useRef({
-    type: "FeatureCollection",
-    features: [],
-  });
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
+  const [editPin, setEditPin] = useState(null);
 
   const userPosRef = useRef(null);
 
@@ -125,7 +118,7 @@ export default function MapPage() {
 
       map.addSource("trail", {
         type: "geojson",
-        data: trailGeoRef.current,
+        data: { type: "FeatureCollection", features: [] },
       });
 
       map.addLayer({
@@ -138,7 +131,7 @@ export default function MapPage() {
         },
       });
 
-      renderNearbyPins();
+      setTimeout(renderNearbyPins, 300);
     });
 
     map.on("moveend", renderNearbyPins);
@@ -184,14 +177,14 @@ export default function MapPage() {
 
         renderNearbyPins();
 
-        if (trailOnRef.current) {
-          const line = trailGeoRef.current.features[0];
-          if (line) {
-            line.geometry.coordinates.push([longitude, latitude]);
-            mapRef.current
-              .getSource("trail")
-              .setData(trailGeoRef.current);
-          }
+        if (trailOnRef.current && activeSegmentRef.current) {
+          activeSegmentRef.current.geometry.coordinates.push([
+            longitude,
+            latitude,
+          ]);
+          mapRef.current.getSource("trail").setData(
+            mapRef.current.getSource("trail")._data
+          );
         }
 
         if (followRef.current) {
@@ -216,7 +209,7 @@ export default function MapPage() {
     const bounds = mapRef.current.getBounds();
     const all = loadAllPins()[todayKey()] || [];
 
-    all.forEach((p) => {
+    all.forEach((p, idx) => {
       const dist = haversine(userPosRef.current, {
         lng: p.lngLat.lng,
         lat: p.lngLat.lat,
@@ -232,6 +225,10 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
+        marker.getElement().onclick = () => {
+          setEditPin({ ...p, index: idx });
+        };
+
         renderedPinsRef.current.push(marker);
       }
     });
@@ -244,24 +241,22 @@ export default function MapPage() {
   };
 
   const toggleTrail = () => {
+    const src = mapRef.current.getSource("trail");
+    src.setData({ type: "FeatureCollection", features: [] });
+
+    if (!trailOnRef.current) {
+      const segment = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] },
+      };
+      src._data.features.push(segment);
+      activeSegmentRef.current = segment;
+    } else {
+      activeSegmentRef.current = null;
+    }
+
     trailOnRef.current = !trailOnRef.current;
     setTrailOn(trailOnRef.current);
-
-    trailGeoRef.current = {
-      type: "FeatureCollection",
-      features: trailOnRef.current
-        ? [
-            {
-              type: "Feature",
-              geometry: { type: "LineString", coordinates: [] },
-            },
-          ]
-        : [],
-    };
-
-    mapRef.current
-      ?.getSource("trail")
-      ?.setData(trailGeoRef.current);
   };
 
   const armLogHouse = () => {
@@ -281,13 +276,35 @@ export default function MapPage() {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    savePinToStorage({ lngLat, color, time: Date.now() });
+    const all = loadAllPins();
+    const today = todayKey();
+    all[today] = [...(all[today] || []), { lngLat, color, time: Date.now() }];
+    saveAllPins(all);
+
     renderNearbyPins();
 
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
+  };
+
+  const updatePinStatus = (color) => {
+    const all = loadAllPins();
+    const today = todayKey();
+    all[today][editPin.index].color = color;
+    saveAllPins(all);
+    setEditPin(null);
+    renderNearbyPins();
+  };
+
+  const deletePin = () => {
+    const all = loadAllPins();
+    const today = todayKey();
+    all[today].splice(editPin.index, 1);
+    saveAllPins(all);
+    setEditPin(null);
+    renderNearbyPins();
   };
 
   return (
@@ -330,7 +347,7 @@ export default function MapPage() {
         </button>
       </div>
 
-      {showStatus && (
+      {(showStatus || editPin) && (
         <div
           style={{
             position: "fixed",
@@ -351,7 +368,9 @@ export default function MapPage() {
           {STATUS_OPTIONS.map((s) => (
             <button
               key={s.label}
-              onClick={() => savePin(s.color)}
+              onClick={() =>
+                editPin ? updatePinStatus(s.color) : savePin(s.color)
+              }
               style={{
                 background: s.color,
                 color: "white",
@@ -363,9 +382,20 @@ export default function MapPage() {
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog} style={{ fontSize: 11 }}>
+          <button
+            onClick={() => (editPin ? setEditPin(null) : cancelLog())}
+            style={{ fontSize: 11 }}
+          >
             Cancel
           </button>
+          {editPin && (
+            <button
+              onClick={deletePin}
+              style={{ fontSize: 11, color: "red" }}
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>
