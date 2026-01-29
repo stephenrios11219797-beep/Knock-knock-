@@ -42,13 +42,21 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring
+      // Accuracy ring (FIXED)
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": ["get", "accuracy"],
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0, ["*", ["get", "accuracy"], 0.05],
+            10, ["*", ["get", "accuracy"], 0.5],
+            16, ["*", ["get", "accuracy"], 1.2],
+            20, ["*", ["get", "accuracy"], 2],
+          ],
           "circle-color": "#3b82f6",
           "circle-opacity": 0.2,
         },
@@ -79,7 +87,6 @@ export default function MapPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
-
         const map = mapRef.current;
         if (!map) return;
 
@@ -125,11 +132,7 @@ export default function MapPage() {
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link
           href="/"
-          style={{
-            padding: 8,
-            background: "white",
-            borderRadius: 999,
-          }}
+          style={{ padding: 8, background: "white", borderRadius: 999 }}
         >
           ← Home
         </Link>
