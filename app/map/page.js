@@ -16,7 +16,6 @@ const STATUS_OPTIONS = [
   { label: "Not Interested", color: "#4b5563" },
 ];
 
-const RADIUS_METERS = 4000;
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 /* ---------- STORAGE ---------- */
@@ -30,26 +29,18 @@ const savePinToStorage = (pin) => {
   localStorage.setItem("pins", JSON.stringify(all));
 };
 
-/* ---------- UTILS ---------- */
-const haversine = (a, b) => {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371000;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-
-  return 2 * R * Math.asin(Math.sqrt(h));
-};
+/* ---------- GEOCODE ---------- */
+async function reverseGeocode(lng, lat) {
+  const res = await fetch(
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
+  );
+  const data = await res.json();
+  return data.features?.[0]?.place_name || "Unknown address";
+}
 
 /* ---------- PIN ---------- */
-function createPin(color) {
+function createPin(color, onClick) {
   const el = document.createElement("div");
-  el.style.padding = "14px";
   el.style.cursor = "pointer";
   el.innerHTML = `
     <svg width="24" height="36" viewBox="0 0 24 36">
@@ -59,32 +50,22 @@ function createPin(color) {
     </svg>
   `;
   el.style.transform = "translate(-50%, -100%)";
+  el.onclick = onClick;
   return el;
 }
 
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
-  const watchIdRef = useRef(null);
 
-  const followRef = useRef(true);
-  const trailOnRef = useRef(false);
-  const activeSegmentRef = useRef(null);
-  const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
-  const renderedPinsRef = useRef([]);
+  const lastLogRef = useRef(null);
 
-  const [follow, setFollow] = useState(true);
-  const [trailOn, setTrailOn] = useState(false);
-  const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
-
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-  const lastLogRef = useRef(null);
-
-  const userPosRef = useRef(null);
+  const [selectedPin, setSelectedPin] = useState(null);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -99,57 +80,8 @@ export default function MapPage() {
 
     mapRef.current = map;
 
-    map.on("load", () => {
-      map.addSource("user-location", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      /* ---- Apple-style ring (fixed, subtle, no flicker) ---- */
-      map.addLayer({
-        id: "accuracy-ring",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": 18,       // SMALL + CONSTANT
-          "circle-color": "#3b82f6",
-          "circle-opacity": 0.18,
-        },
-      });
-
-      /* ---- Blue dot ---- */
-      map.addLayer({
-        id: "user-dot",
-        type: "circle",
-        source: "user-location",
-        paint: {
-          "circle-radius": 7,        // Slightly bigger dot
-          "circle-color": "#2563eb",
-        },
-      });
-
-      map.addSource("trail", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-
-      map.addLayer({
-        id: "trail-line",
-        type: "line",
-        source: "trail",
-        paint: {
-          "line-color": "#2563eb",
-          "line-width": 3,
-        },
-      });
-
-      setTimeout(renderNearbyPins, 300);
-    });
-
-    map.on("moveend", renderNearbyPins);
-
     map.on("click", (e) => {
-      if (!loggingRef.current) return;
+      if (!showStatus) return;
 
       pendingPinRef.current?.remove();
 
@@ -162,202 +94,101 @@ export default function MapPage() {
       setShowStatus(true);
     });
 
-    return () => {
-      if (watchIdRef.current)
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      map.remove();
-    };
+    renderPins();
   }, []);
 
-  /* ---------- GPS ---------- */
-  useEffect(() => {
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { longitude, latitude } = pos.coords;
-        userPosRef.current = { lng: longitude, lat: latitude };
-
-        mapRef.current?.getSource("user-location")?.setData({
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [longitude, latitude] },
-              properties: {},
-            },
-          ],
-        });
-
-        renderNearbyPins();
-
-        if (trailOnRef.current && activeSegmentRef.current) {
-          activeSegmentRef.current.geometry.coordinates.push([
-            longitude,
-            latitude,
-          ]);
-          mapRef.current.getSource("trail").setData(
-            mapRef.current.getSource("trail")._data
-          );
-        }
-
-        if (followRef.current) {
-          mapRef.current.easeTo({
-            center: [longitude, latitude],
-            zoom: 18,
-          });
-        }
-      },
-      () => {},
-      { enableHighAccuracy: true }
-    );
-  }, []);
-
-  /* ---------- PIN RENDERING ---------- */
-  const renderNearbyPins = () => {
-    renderedPinsRef.current.forEach((m) => m.remove());
-    renderedPinsRef.current = [];
-
-    if (!userPosRef.current || !mapRef.current) return;
-
-    const bounds = mapRef.current.getBounds();
+  /* ---------- PIN RENDER ---------- */
+  const renderPins = () => {
     const all = loadAllPins()[todayKey()] || [];
-
     all.forEach((p) => {
-      const dist = haversine(userPosRef.current, {
-        lng: p.lngLat.lng,
-        lat: p.lngLat.lat,
-      });
-
-      if (
-        dist <= RADIUS_METERS &&
-        bounds.contains([p.lngLat.lng, p.lngLat.lat])
-      ) {
-        const marker = new mapboxgl.Marker({
-          element: createPin(p.color),
-        })
-          .setLngLat(p.lngLat)
-          .addTo(mapRef.current);
-
-        renderedPinsRef.current.push(marker);
-      }
+      new mapboxgl.Marker({
+        element: createPin(p.color, () => setSelectedPin(p)),
+      })
+        .setLngLat(p.lngLat)
+        .addTo(mapRef.current);
     });
   };
 
-  /* ---------- CONTROLS ---------- */
-  const toggleFollow = () => {
-    followRef.current = !followRef.current;
-    setFollow(followRef.current);
-  };
-
-  const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
-    trailOnRef.current = !trailOnRef.current;
-    setTrailOn(trailOnRef.current);
-  };
-
+  /* ---------- LOG ---------- */
   const armLogHouse = () => {
-    loggingRef.current = true;
-    setLoggingMode(true);
+    setShowStatus(true);
   };
 
-  const cancelLog = () => {
-    pendingPinRef.current?.remove();
-    pendingPinRef.current = null;
-    loggingRef.current = false;
-    setLoggingMode(false);
-    setShowStatus(false);
-  };
-
-  const savePin = (status) => {
+  const savePin = async (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
+    const address = await reverseGeocode(lngLat.lng, lngLat.lat);
+
     const log = {
       lngLat,
-      color: status.color,
       status: status.label,
+      color: status.color,
+      address,
       time: Date.now(),
     };
 
-    savePinToStorage(log);
     lastLogRef.current = log;
 
     if (status.label === "No Answer") {
       setShowSeverity(true);
+    } else {
+      savePinToStorage(log);
+      renderPins();
     }
 
-    renderNearbyPins();
-
-    pendingPinRef.current = null;
-    loggingRef.current = false;
-    setLoggingMode(false);
     setShowStatus(false);
   };
 
   const saveSeverity = () => {
     lastLogRef.current.severity = severity;
     lastLogRef.current.notes = notes || null;
+
+    savePinToStorage(lastLogRef.current);
+    renderPins();
+
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
   };
 
   return (
-    <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+    <div style={{ height: "100vh", width: "100vw" }}>
+      <div ref={mapContainerRef} style={{ height: "100%" }} />
 
       {/* HOME */}
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
-      </div>
-
-      {/* TOP RIGHT */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
+      <Link
+        href="/"
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 12,
+          background: "white",
+          padding: 8,
+          borderRadius: 999,
+          zIndex: 50,
+        }}
+      >
+        ← Home
+      </Link>
 
       {/* LOG HOUSE */}
-      <div
+      <button
+        onClick={armLogHouse}
         style={{
           position: "fixed",
           bottom: 24,
           left: "50%",
           transform: "translateX(-50%)",
+          padding: "12px 18px",
+          borderRadius: 999,
           zIndex: 50,
         }}
       >
-        <button
-          onClick={armLogHouse}
-          style={{
-            background: loggingMode ? "#16a34a" : "white",
-            borderRadius: 999,
-            padding: "12px 18px",
-          }}
-        >
-          Log House
-        </button>
-      </div>
+        Log House
+      </button>
 
-      {/* STATUS + SEVERITY (unchanged) */}
+      {/* STATUS */}
       {showStatus && (
         <div
           style={{
@@ -371,8 +202,6 @@ export default function MapPage() {
             display: "flex",
             gap: 6,
             flexWrap: "wrap",
-            justifyContent: "center",
-            maxWidth: "90vw",
             zIndex: 100,
           }}
         >
@@ -391,45 +220,85 @@ export default function MapPage() {
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog}>Cancel</button>
         </div>
       )}
 
+      {/* SEVERITY */}
       {showSeverity && (
         <div
           style={{
             position: "fixed",
-            bottom: 130,
+            bottom: 140,
             left: "50%",
             transform: "translateX(-50%)",
             background: "white",
-            padding: 22,
-            borderRadius: 18,
+            padding: 20,
+            borderRadius: 16,
             width: 320,
             zIndex: 200,
           }}
         >
-          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+          <strong>Roof Damage Severity</strong>
 
           <input
             type="range"
             min={0}
             max={10}
             value={severity}
-            onChange={(e) => setSeverity(Number(e.target.value))}
-            style={{ width: "100%" }}
+            onChange={(e) => setSeverity(+e.target.value)}
+            style={{ width: "100%", marginTop: 12 }}
           />
 
           <textarea
-            placeholder="Notes (optional)"
+            placeholder="Notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             style={{ width: "100%", height: 80, marginTop: 10 }}
           />
 
-          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-            <button onClick={saveSeverity}>Save</button>
-            <button onClick={() => setShowSeverity(false)}>Skip</button>
+          <button onClick={saveSeverity} style={{ marginTop: 10 }}>
+            Save
+          </button>
+        </div>
+      )}
+
+      {/* PIN DETAILS */}
+      {selectedPin && (
+        <div
+          onClick={() => setSelectedPin(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.3)",
+            zIndex: 300,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              padding: 20,
+              borderRadius: 12,
+              width: 320,
+            }}
+          >
+            <strong>{selectedPin.status}</strong>
+            <div style={{ fontSize: 13, marginTop: 6 }}>
+              {selectedPin.address}
+            </div>
+
+            {selectedPin.severity !== undefined && (
+              <div style={{ marginTop: 8 }}>
+                Severity: {selectedPin.severity}/10
+              </div>
+            )}
+
+            {selectedPin.notes && (
+              <div style={{ marginTop: 6 }}>{selectedPin.notes}</div>
+            )}
           </div>
         </div>
       )}
