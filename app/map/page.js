@@ -14,11 +14,8 @@ export default function MapPage() {
   const watchIdRef = useRef(null);
 
   const followRef = useRef(true);
+  const lastCenterRef = useRef(null);
   const [follow, setFollow] = useState(true);
-
-  const handleLogHouse = () => {
-    console.log("Log House pressed");
-  };
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -42,20 +39,23 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring (FIXED)
+      // Accuracy ring (STABLE)
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
           "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            0, ["*", ["get", "accuracy"], 0.05],
-            10, ["*", ["get", "accuracy"], 0.5],
-            16, ["*", ["get", "accuracy"], 1.2],
-            20, ["*", ["get", "accuracy"], 2],
+            "max",
+            20,
+            [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              10, ["*", ["get", "accuracy"], 0.4],
+              16, ["*", ["get", "accuracy"], 1.1],
+              20, ["*", ["get", "accuracy"], 2],
+            ],
           ],
           "circle-color": "#3b82f6",
           "circle-opacity": 0.2,
@@ -106,11 +106,21 @@ export default function MapPage() {
           ],
         });
 
+        // Only auto-follow if moved meaningfully
         if (followRef.current) {
-          map.easeTo({
-            center: [longitude, latitude],
-            zoom: 18,
-          });
+          const last = lastCenterRef.current;
+          if (
+            !last ||
+            Math.abs(last.lng - longitude) > 0.00005 ||
+            Math.abs(last.lat - latitude) > 0.00005
+          ) {
+            map.easeTo({
+              center: [longitude, latitude],
+              zoom: 18,
+              duration: 500,
+            });
+            lastCenterRef.current = { lng: longitude, lat: latitude };
+          }
         }
       },
       () => {},
@@ -138,15 +148,15 @@ export default function MapPage() {
         </Link>
       </div>
 
-      {/* FOLLOW / FREE LOOK */}
+      {/* FOLLOW */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         <button onClick={toggleFollow}>
           {follow ? "Following" : "Free Look"}
         </button>
       </div>
 
-      {/* LOG HOUSE */}
-      <ActionPanel onLogHouse={handleLogHouse} />
+      {/* ACTION PANEL */}
+      <ActionPanel />
     </div>
   );
 }
