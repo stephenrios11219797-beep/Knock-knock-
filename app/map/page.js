@@ -14,7 +14,7 @@ export default function MapPage() {
   const watchIdRef = useRef(null);
 
   const followRef = useRef(true);
-  const lastCenterRef = useRef(null);
+  const hasCenteredRef = useRef(false);
   const [follow, setFollow] = useState(true);
 
   /* ---------- MAP INIT ---------- */
@@ -39,26 +39,19 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring (STABLE)
+      // Accuracy ring — ALWAYS visible
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
           "circle-radius": [
-            "max",
-            20,
-            [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              10, ["*", ["get", "accuracy"], 0.4],
-              16, ["*", ["get", "accuracy"], 1.1],
-              20, ["*", ["get", "accuracy"], 2],
-            ],
+            "coalesce",
+            ["get", "accuracy"],
+            30,
           ],
           "circle-color": "#3b82f6",
-          "circle-opacity": 0.2,
+          "circle-opacity": 0.25,
         },
       });
 
@@ -100,27 +93,30 @@ export default function MapPage() {
                 coordinates: [longitude, latitude],
               },
               properties: {
-                accuracy,
+                accuracy: Math.max(accuracy, 25), // 👈 never 0
               },
             },
           ],
         });
 
-        // Only auto-follow if moved meaningfully
+        // Always center first fix
+        if (!hasCenteredRef.current) {
+          map.easeTo({
+            center: [longitude, latitude],
+            zoom: 18,
+            duration: 0,
+          });
+          hasCenteredRef.current = true;
+          return;
+        }
+
+        // Follow afterwards
         if (followRef.current) {
-          const last = lastCenterRef.current;
-          if (
-            !last ||
-            Math.abs(last.lng - longitude) > 0.00005 ||
-            Math.abs(last.lat - latitude) > 0.00005
-          ) {
-            map.easeTo({
-              center: [longitude, latitude],
-              zoom: 18,
-              duration: 500,
-            });
-            lastCenterRef.current = { lng: longitude, lat: latitude };
-          }
+          map.easeTo({
+            center: [longitude, latitude],
+            zoom: map.getZoom(),
+            duration: 500,
+          });
         }
       },
       () => {},
