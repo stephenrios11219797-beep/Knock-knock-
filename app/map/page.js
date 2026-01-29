@@ -9,7 +9,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 /* ---------- STATUS OPTIONS ---------- */
 const STATUS_OPTIONS = [
-  { label: "Walked", color: "#16a34a" },
+  { label: "Knock", color: "#16a34a" },
   { label: "No Answer", color: "#dc2626" },
   { label: "Soft Set", color: "#0ea5e9" },
   { label: "Contingency", color: "#7c3aed" },
@@ -23,11 +23,14 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
-const savePinToStorage = (pin) => {
-  const all = loadAllPins();
-  const today = todayKey();
-  all[today] = [...(all[today] || []), pin];
+const saveAllPins = (all) =>
   localStorage.setItem("pins", JSON.stringify(all));
+
+/* ---------- SEVERITY → COLOR ---------- */
+const severityColor = (v) => {
+  if (v >= 7) return "#dc2626";
+  if (v >= 4) return "#f59e0b";
+  return "#16a34a";
 };
 
 /* ---------- PIN ELEMENT ---------- */
@@ -66,7 +69,6 @@ export default function MapPage() {
   const [notes, setNotes] = useState("");
 
   const [selectedPin, setSelectedPin] = useState(null);
-  const [, forceRefresh] = useState(0);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -107,6 +109,8 @@ export default function MapPage() {
           "circle-color": "#2563eb",
         },
       });
+
+      renderSavedPins();
     });
 
     map.on("click", (e) => {
@@ -135,18 +139,20 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
-        mapRef.current?.getSource("user-location")?.setData({
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude],
+        mapRef.current
+          ?.getSource("user-location")
+          ?.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [longitude, latitude],
+                },
               },
-            },
-          ],
-        });
+            ],
+          });
 
         if (follow) {
           mapRef.current.easeTo({
@@ -158,14 +164,10 @@ export default function MapPage() {
       () => {},
       { enableHighAccuracy: true }
     );
-
-    return () =>
-      watchIdRef.current &&
-      navigator.geolocation.clearWatch(watchIdRef.current);
   }, [follow]);
 
-  /* ---------- RENDER SAVED PINS ---------- */
-  useEffect(() => {
+  /* ---------- RENDER PINS ---------- */
+  const renderSavedPins = () => {
     renderedPinsRef.current.forEach((m) => m.remove());
     renderedPinsRef.current = [];
 
@@ -184,7 +186,7 @@ export default function MapPage() {
 
       renderedPinsRef.current.push(marker);
     });
-  }, [showSeverity, forceRefresh]);
+  };
 
   /* ---------- ACTIONS ---------- */
   const armLogHouse = () => {
@@ -204,43 +206,47 @@ export default function MapPage() {
       address: `${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}`,
     };
 
-    // DROP FINAL PIN IMMEDIATELY
-    const el = createPin(status.color);
-    el.onclick = (e) => {
-      e.stopPropagation();
-      setSelectedPin(log);
-    };
+    const all = loadAllPins();
+    const today = todayKey();
+    all[today] = [...(all[today] || []), log];
+    saveAllPins(all);
 
-    const marker = new mapboxgl.Marker({ element: el })
-      .setLngLat(lngLat)
-      .addTo(mapRef.current);
-
-    renderedPinsRef.current.push(marker);
-
-    savePinToStorage(log);
     lastLogRef.current = log;
 
-    pendingPinRef.current = null;
+    if (status.label === "No Answer" || status.label === "Not Interested") {
+      setShowSeverity(true);
+    } else {
+      renderSavedPins();
+    }
+
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
-
-    if (status.label === "No Answer") {
-      setShowSeverity(true);
-    } else {
-      forceRefresh((v) => v + 1);
-    }
   };
 
   const saveSeverity = () => {
-    lastLogRef.current.severity = severity;
-    lastLogRef.current.notes = notes || null;
-    savePinToStorage(lastLogRef.current);
+    const all = loadAllPins();
+    const today = todayKey();
+
+    const updated = all[today].map((p) =>
+      p.time === lastLogRef.current.time
+        ? {
+            ...p,
+            severity,
+            notes,
+            color: severityColor(severity),
+          }
+        : p
+    );
+
+    all[today] = updated;
+    saveAllPins(all);
 
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
-    forceRefresh((v) => v + 1);
+
+    renderSavedPins();
   };
 
   /* ---------- UI ---------- */
@@ -249,12 +255,12 @@ export default function MapPage() {
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* TOP LEFT */}
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 100 }}>
-        <Link href="/">← Home</Link>
+      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 500, background: "white", padding: 6, borderRadius: 6 }}>
+        <Link href="/">Home</Link>
       </div>
 
       {/* TOP RIGHT */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 100 }}>
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 500, display: "flex", gap: 8 }}>
         <button onClick={() => setFollow(!follow)}>
           {follow ? "Following" : "Free Look"}
         </button>
@@ -264,19 +270,11 @@ export default function MapPage() {
       </div>
 
       {/* LOG HOUSE */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 100,
-        }}
-      >
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 500 }}>
         <button
           onClick={armLogHouse}
           style={{
-            padding: "14px 24px",
+            padding: "14px 26px",
             borderRadius: 999,
             background: loggingMode ? "#16a34a" : "white",
           }}
@@ -285,21 +283,19 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* STATUS SELECT */}
+      {/* STATUS */}
       {showStatus && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 18,
-            borderRadius: 16,
-            width: 360,
-            zIndex: 200,
-          }}
-        >
+        <div style={{
+          position: "fixed",
+          bottom: 90,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 20,
+          borderRadius: 18,
+          width: 360,
+          zIndex: 600,
+        }}>
           {STATUS_OPTIONS.map((s) => (
             <button
               key={s.label}
@@ -307,7 +303,7 @@ export default function MapPage() {
               style={{
                 width: "100%",
                 padding: 16,
-                marginBottom: 10,
+                marginBottom: 8,
                 background: s.color,
                 color: "white",
                 borderRadius: 12,
@@ -321,19 +317,17 @@ export default function MapPage() {
 
       {/* SEVERITY */}
       {showSeverity && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 100,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 18,
-            borderRadius: 16,
-            width: 340,
-            zIndex: 300,
-          }}
-        >
+        <div style={{
+          position: "fixed",
+          bottom: 100,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 18,
+          borderRadius: 16,
+          width: 340,
+          zIndex: 700,
+        }}>
           <div>Severity: {severity}</div>
           <input
             type="range"
@@ -354,24 +348,20 @@ export default function MapPage() {
 
       {/* PIN INFO */}
       {selectedPin && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 16,
-            borderRadius: 16,
-            width: 340,
-            zIndex: 400,
-          }}
-        >
+        <div style={{
+          position: "fixed",
+          bottom: 90,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 16,
+          borderRadius: 16,
+          width: 340,
+          zIndex: 800,
+        }}>
           <strong>{selectedPin.status}</strong>
           <div>{selectedPin.address}</div>
-          {selectedPin.severity != null && (
-            <div>Severity: {selectedPin.severity}</div>
-          )}
+          {selectedPin.severity && <div>Severity: {selectedPin.severity}</div>}
           {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
         </div>
       )}
