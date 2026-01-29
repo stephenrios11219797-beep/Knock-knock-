@@ -7,6 +7,8 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+/* ================= CONSTANTS ================= */
+
 const STATUS_OPTIONS = [
   { label: "Walked", color: "#16a34a" },
   { label: "No Answer", color: "#dc2626" },
@@ -19,7 +21,8 @@ const STATUS_OPTIONS = [
 const RADIUS_METERS = 4000;
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
-/* ---------- STORAGE ---------- */
+/* ================= STORAGE ================= */
+
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
@@ -30,7 +33,8 @@ const savePinToStorage = (pin) => {
   localStorage.setItem("pins", JSON.stringify(all));
 };
 
-/* ---------- UTILS ---------- */
+/* ================= UTILS ================= */
+
 const haversine = (a, b) => {
   const toRad = (v) => (v * Math.PI) / 180;
   const R = 6371000;
@@ -46,7 +50,7 @@ const haversine = (a, b) => {
   return 2 * R * Math.asin(Math.sqrt(h));
 };
 
-async function reverseGeocode(lng, lat) {
+const reverseGeocode = async (lng, lat) => {
   try {
     const res = await fetch(
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
@@ -56,9 +60,10 @@ async function reverseGeocode(lng, lat) {
   } catch {
     return "Unknown address";
   }
-}
+};
 
-/* ---------- PIN ---------- */
+/* ================= PIN ================= */
+
 function createPin(color) {
   const el = document.createElement("div");
   el.style.padding = "14px";
@@ -73,6 +78,8 @@ function createPin(color) {
   el.style.transform = "translate(-50%, -100%)";
   return el;
 }
+
+/* ================= COMPONENT ================= */
 
 export default function MapPage() {
   const mapRef = useRef(null);
@@ -90,16 +97,16 @@ export default function MapPage() {
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
-
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-
   const [selectedPin, setSelectedPin] = useState(null);
+
   const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
 
-  /* ---------- MAP INIT ---------- */
+  /* ================= MAP INIT ================= */
+
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -183,7 +190,8 @@ export default function MapPage() {
     };
   }, []);
 
-  /* ---------- GPS ---------- */
+  /* ================= GPS ================= */
+
   useEffect(() => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
@@ -223,7 +231,8 @@ export default function MapPage() {
     );
   }, []);
 
-  /* ---------- PIN RENDERING ---------- */
+  /* ================= PIN RENDER ================= */
+
   const renderNearbyPins = () => {
     renderedPinsRef.current.forEach((m) => m.remove());
     renderedPinsRef.current = [];
@@ -241,21 +250,46 @@ export default function MapPage() {
 
       if (dist <= RADIUS_METERS && bounds.contains([p.lngLat.lng, p.lngLat.lat])) {
         const el = createPin(p.color);
-        el.addEventListener("click", (e) => {
+        el.onclick = (e) => {
           e.stopPropagation();
           setSelectedPin(p);
-        });
+        };
 
-        const marker = new mapboxgl.Marker({ element: el })
-          .setLngLat(p.lngLat)
-          .addTo(mapRef.current);
-
-        renderedPinsRef.current.push(marker);
+        renderedPinsRef.current.push(
+          new mapboxgl.Marker({ element: el })
+            .setLngLat(p.lngLat)
+            .addTo(mapRef.current)
+        );
       }
     });
   };
 
-  /* ---------- LOGIC ---------- */
+  /* ================= CONTROLS ================= */
+
+  const toggleFollow = () => {
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
+  };
+
+  const toggleTrail = () => {
+    const src = mapRef.current.getSource("trail");
+    src.setData({ type: "FeatureCollection", features: [] });
+
+    if (!trailOnRef.current) {
+      const segment = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] },
+      };
+      src._data.features.push(segment);
+      activeSegmentRef.current = segment;
+    } else {
+      activeSegmentRef.current = null;
+    }
+
+    trailOnRef.current = !trailOnRef.current;
+    setTrailOn(trailOnRef.current);
+  };
+
   const armLogHouse = () => {
     loggingRef.current = true;
     setLoggingMode(true);
@@ -283,10 +317,9 @@ export default function MapPage() {
     if (status.label === "No Answer") setShowSeverity(true);
 
     renderNearbyPins();
-
+    setShowStatus(false);
     loggingRef.current = false;
     setLoggingMode(false);
-    setShowStatus(false);
   };
 
   const saveSeverity = () => {
@@ -297,89 +330,65 @@ export default function MapPage() {
     setShowSeverity(false);
   };
 
+  /* ================= UI ================= */
+
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
+      {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
       </div>
 
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
-      >
+      {/* TOP RIGHT */}
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+        <button onClick={toggleFollow}>
+          {follow ? "Following" : "Free Look"}
+        </button>
+        <button onClick={toggleTrail}>
+          {trailOn ? "Trail On" : "Trail Off"}
+        </button>
+      </div>
+
+      {/* LOG HOUSE */}
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
         <button
           onClick={armLogHouse}
-          style={{
-            background: loggingMode ? "#16a34a" : "white",
-            borderRadius: 999,
-            padding: "12px 18px",
-          }}
+          style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}
         >
           Log House
         </button>
       </div>
 
+      {/* STATUS MENU */}
+      {showStatus && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 12, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 200 }}>
+          {STATUS_OPTIONS.map((s) => (
+            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white" }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* PIN INFO */}
       {selectedPin && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 16,
-            borderRadius: 14,
-            width: 320,
-            zIndex: 300,
-          }}
-        >
-          <div style={{ fontWeight: 600 }}>{selectedPin.address}</div>
+        <div style={{ position: "fixed", bottom: 140, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 14, width: 320 }}>
+          <div><strong>{selectedPin.address}</strong></div>
           <div>Status: {selectedPin.status}</div>
-          {selectedPin.severity != null && (
-            <div>Severity: {selectedPin.severity}</div>
-          )}
+          {selectedPin.severity != null && <div>Severity: {selectedPin.severity}</div>}
           {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
         </div>
       )}
 
+      {/* SEVERITY */}
       {showSeverity && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 140,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 18,
-            borderRadius: 18,
-            width: 320,
-            zIndex: 400,
-          }}
-        >
-          <div style={{ marginBottom: 8 }}>Damage Severity</div>
-          <input
-            type="range"
-            min={0}
-            max={10}
-            value={severity}
-            onChange={(e) => setSeverity(Number(e.target.value))}
-            style={{ width: "100%" }}
-          />
-          <textarea
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ width: "100%", marginTop: 8 }}
-          />
+        <div style={{ position: "fixed", bottom: 220, left: "50%", transform: "translateX(-50%)", background: "white", padding: 18, borderRadius: 18, width: 320 }}>
+          <input type="range" min={0} max={10} value={severity} onChange={(e) => setSeverity(Number(e.target.value))} />
+          <textarea placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           <button onClick={saveSeverity}>Save</button>
         </div>
       )}
