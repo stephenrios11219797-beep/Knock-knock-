@@ -26,7 +26,7 @@ const loadAllPins = () =>
 const saveAllPins = (all) =>
   localStorage.setItem("pins", JSON.stringify(all));
 
-/* ---------- SEVERITY → COLOR ---------- */
+/* ---------- SEVERITY COLOR ---------- */
 const severityColor = (v) => {
   if (v >= 7) return "#dc2626";
   if (v >= 4) return "#f59e0b";
@@ -48,23 +48,15 @@ function createPin(color) {
   return el;
 }
 
-/* ---------- REVERSE GEOCODE ---------- */
-async function reverseGeocode(lng, lat) {
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
-    );
-    const data = await res.json();
-    return data.features?.[0]?.place_name || "Unknown address";
-  } catch {
-    return "Unknown address";
-  }
-}
-
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
+
+  /* --- FOLLOW / TRAIL REFS (CRITICAL) --- */
+  const followRef = useRef(true);
+  const trailOnRef = useRef(false);
+  const trailSegmentRef = useRef(null);
 
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
@@ -80,7 +72,6 @@ export default function MapPage() {
 
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-
   const [selectedPin, setSelectedPin] = useState(null);
 
   /* ---------- MAP INIT ---------- */
@@ -123,6 +114,21 @@ export default function MapPage() {
         },
       });
 
+      map.addSource("trail", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "trail-line",
+        type: "line",
+        source: "trail",
+        paint: {
+          "line-color": "#2563eb",
+          "line-width": 3,
+        },
+      });
+
       renderSavedPins();
     });
 
@@ -152,22 +158,30 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
-        mapRef.current
-          ?.getSource("user-location")
-          ?.setData({
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [longitude, latitude],
-                },
+        mapRef.current?.getSource("user-location")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [longitude, latitude],
               },
-            ],
-          });
+            },
+          ],
+        });
 
-        if (follow) {
+        if (trailOnRef.current && trailSegmentRef.current) {
+          trailSegmentRef.current.geometry.coordinates.push([
+            longitude,
+            latitude,
+          ]);
+          mapRef.current
+            .getSource("trail")
+            .setData(mapRef.current.getSource("trail")._data);
+        }
+
+        if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
@@ -177,7 +191,7 @@ export default function MapPage() {
       () => {},
       { enableHighAccuracy: true }
     );
-  }, [follow]);
+  }, []);
 
   /* ---------- RENDER PINS ---------- */
   const renderSavedPins = () => {
@@ -202,23 +216,41 @@ export default function MapPage() {
   };
 
   /* ---------- ACTIONS ---------- */
+  const toggleFollow = () => {
+    followRef.current = !followRef.current;
+    setFollow(followRef.current);
+  };
+
+  const toggleTrail = () => {
+    const src = mapRef.current.getSource("trail");
+
+    if (!trailOnRef.current) {
+      trailSegmentRef.current = {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [] },
+      };
+      src._data.features.push(trailSegmentRef.current);
+    }
+
+    trailOnRef.current = !trailOnRef.current;
+    setTrailOn(trailOnRef.current);
+  };
+
   const armLogHouse = () => {
     loggingRef.current = true;
     setLoggingMode(true);
   };
 
-  const savePin = async (status) => {
+  const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const address = await reverseGeocode(lngLat.lng, lngLat.lat);
-
     const log = {
       lngLat,
-      color: status.color,
       status: status.label,
+      color: status.color,
       time: Date.now(),
-      address,
+      address: `${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}`,
     };
 
     const all = loadAllPins();
@@ -263,6 +295,17 @@ export default function MapPage() {
     renderSavedPins();
   };
 
+  const sliderStyle = {
+    width: "100%",
+    background: `linear-gradient(
+      to right,
+      #16a34a 0%,
+      #16a34a ${severity * 10}%,
+      #e5e7eb ${severity * 10}%,
+      #e5e7eb 100%
+    )`,
+  };
+
   /* ---------- UI ---------- */
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
@@ -273,52 +316,24 @@ export default function MapPage() {
       </div>
 
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 500 }}>
-        <button onClick={() => setFollow(!follow)}>
+        <button onClick={toggleFollow}>
           {follow ? "Following" : "Free Look"}
         </button>
-        <button onClick={() => setTrailOn(!trailOn)}>
+        <button onClick={toggleTrail}>
           {trailOn ? "Trail On" : "Trail Off"}
         </button>
       </div>
 
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 500 }}>
-        <button
-          onClick={armLogHouse}
-          style={{
-            padding: "14px 26px",
-            borderRadius: 999,
-            background: loggingMode ? "#16a34a" : "white",
-          }}
-        >
+        <button onClick={armLogHouse}>
           Log House
         </button>
       </div>
 
       {showStatus && (
-        <div style={{
-          position: "fixed",
-          bottom: 90,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 20,
-          borderRadius: 18,
-          width: 360,
-          zIndex: 600,
-        }}>
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20, borderRadius: 18, width: 360, zIndex: 600 }}>
           {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() => savePin(s)}
-              style={{
-                width: "100%",
-                padding: 16,
-                marginBottom: 8,
-                background: s.color,
-                color: "white",
-                borderRadius: 12,
-              }}
-            >
+            <button key={s.label} onClick={() => savePin(s)} style={{ width: "100%", padding: 16, marginBottom: 8, background: s.color, color: "white", borderRadius: 12 }}>
               {s.label}
             </button>
           ))}
@@ -326,47 +341,16 @@ export default function MapPage() {
       )}
 
       {showSeverity && (
-        <div style={{
-          position: "fixed",
-          bottom: 100,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 18,
-          borderRadius: 16,
-          width: 340,
-          zIndex: 700,
-        }}>
+        <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: "white", padding: 18, borderRadius: 16, width: 340, zIndex: 700 }}>
           <div>Severity: {severity}</div>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            value={severity}
-            onChange={(e) => setSeverity(+e.target.value)}
-          />
-          <textarea
-            placeholder="Notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ width: "100%", marginTop: 8 }}
-          />
+          <input type="range" min="1" max="10" value={severity} onChange={(e) => setSeverity(+e.target.value)} style={sliderStyle} />
+          <textarea placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
           <button onClick={saveSeverity}>Save</button>
         </div>
       )}
 
       {selectedPin && (
-        <div style={{
-          position: "fixed",
-          bottom: 90,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 16,
-          borderRadius: 16,
-          width: 340,
-          zIndex: 800,
-        }}>
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 340, zIndex: 800 }}>
           <strong>{selectedPin.status}</strong>
           <div>{selectedPin.address}</div>
           {selectedPin.severity && <div>Severity: {selectedPin.severity}</div>}
