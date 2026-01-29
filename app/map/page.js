@@ -4,25 +4,66 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import Link from "next/link";
-import ActionPanel from "./ActionPanel";
 
-mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
+
+/* ---------- CONSTANTS ---------- */
+const STATUS_OPTIONS = [
+  { label: "Walked", color: "#16a34a" },
+  { label: "No Answer", color: "#dc2626" },
+  { label: "Soft Set", color: "#0ea5e9" },
+  { label: "Contingency", color: "#7c3aed" },
+  { label: "Contract", color: "#d4af37" },
+  { label: "Not Interested", color: "#4b5563" },
+];
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- STORAGE ---------- */
+const loadAllPins = () =>
+  JSON.parse(localStorage.getItem("pins") || "{}");
+
+const savePinToStorage = (pin: any) => {
+  const all = loadAllPins();
+  const today = todayKey();
+  all[today] = [...(all[today] || []), pin];
+  localStorage.setItem("pins", JSON.stringify(all));
+};
+
+/* ---------- PIN SVG ---------- */
+function createPin(color: string) {
+  const el = document.createElement("div");
+  el.innerHTML = `
+    <svg width="26" height="38" viewBox="0 0 24 36">
+      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z"
+        fill="${color}" />
+      <circle cx="12" cy="12" r="4" fill="white" />
+    </svg>
+  `;
+  el.style.transform = "translate(-50%, -100%)";
+  return el;
+}
 
 export default function MapPage() {
-  const mapRef = useRef(null);
-  const mapContainerRef = useRef(null);
-  const watchIdRef = useRef(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   const followRef = useRef(true);
-  const hasCenteredRef = useRef(false);
-  const [follow, setFollow] = useState(true);
+  const loggingRef = useRef(false);
+  const pendingPinRef = useRef<mapboxgl.Marker | null>(null);
+
+  const userPosRef = useRef<{ lng: number; lat: number } | null>(null);
+
+  const [loggingMode, setLoggingMode] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
     const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
+      container: mapContainerRef.current!,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 4,
@@ -31,6 +72,7 @@ export default function MapPage() {
     mapRef.current = map;
 
     map.on("load", () => {
+      /* USER LOCATION SOURCE */
       map.addSource("user-location", {
         type: "geojson",
         data: {
@@ -39,7 +81,7 @@ export default function MapPage() {
         },
       });
 
-      // 🍎 Apple-tight accuracy ring
+      /* ACCURACY RING — APPLE TIGHT */
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
@@ -48,33 +90,49 @@ export default function MapPage() {
           "circle-radius": [
             "interpolate",
             ["linear"],
-            ["coalesce", ["get", "accuracy"], 15],
-            5, 8,
-            15, 12,
-            30, 18,
-            60, 24,
+            ["zoom"],
+            14,
+            12,
+            18,
+            28,
           ],
           "circle-color": "#3b82f6",
-          "circle-opacity": 0.22,
+          "circle-opacity": 0.18,
         },
       });
 
-      // 🍎 Apple Maps–size blue dot (slightly larger)
+      /* BLUE DOT — SLIGHTLY BIGGER */
       map.addLayer({
-        id: "user-dot",
+        id: "blue-dot",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 7, // ⬅️ was 5
+          "circle-radius": 7,
           "circle-color": "#2563eb",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
         },
       });
     });
 
+    /* MAP CLICK — LOG HOUSE */
+    map.on("click", (e) => {
+      if (!loggingRef.current) return;
+
+      pendingPinRef.current?.remove();
+
+      pendingPinRef.current = new mapboxgl.Marker({
+        element: createPin("#9ca3af"),
+      })
+        .setLngLat(e.lngLat)
+        .addTo(map);
+
+      setShowStatus(true);
+    });
+
     return () => {
-      if (watchIdRef.current) {
+      if (watchIdRef.current)
         navigator.geolocation.clearWatch(watchIdRef.current);
-      }
       map.remove();
     };
   }, []);
@@ -83,41 +141,33 @@ export default function MapPage() {
   useEffect(() => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const { longitude, latitude, accuracy } = pos.coords;
-        const map = mapRef.current;
-        if (!map) return;
+        const { longitude, latitude } = pos.coords;
+        userPosRef.current = { lng: longitude, lat: latitude };
 
-        map.getSource("user-location")?.setData({
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude],
-              },
-              properties: {
-                accuracy: Math.max(accuracy ?? 15, 15),
-              },
-            },
-          ],
-        });
+        const feature = {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          properties: {},
+        };
 
-        if (!hasCenteredRef.current) {
-          map.easeTo({
-            center: [longitude, latitude],
-            zoom: 18,
-            duration: 0,
+        const source = mapRef.current?.getSource(
+          "user-location"
+        ) as mapboxgl.GeoJSONSource;
+
+        if (source) {
+          source.setData({
+            type: "FeatureCollection",
+            features: [feature],
           });
-          hasCenteredRef.current = true;
-          return;
         }
 
         if (followRef.current) {
-          map.easeTo({
+          mapRef.current?.easeTo({
             center: [longitude, latitude],
-            zoom: map.getZoom(),
-            duration: 500,
+            zoom: 18,
           });
         }
       },
@@ -127,9 +177,34 @@ export default function MapPage() {
   }, []);
 
   /* ---------- CONTROLS ---------- */
-  const toggleFollow = () => {
-    followRef.current = !followRef.current;
-    setFollow(followRef.current);
+  const armLogHouse = () => {
+    loggingRef.current = true;
+    setLoggingMode(true);
+  };
+
+  const cancelLog = () => {
+    pendingPinRef.current?.remove();
+    pendingPinRef.current = null;
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
+  };
+
+  const savePin = (status: any) => {
+    const lngLat = pendingPinRef.current!.getLngLat();
+    pendingPinRef.current!.remove();
+
+    savePinToStorage({
+      lngLat,
+      color: status.color,
+      status: status.label,
+      time: Date.now(),
+    });
+
+    pendingPinRef.current = null;
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
   };
 
   return (
@@ -138,23 +213,70 @@ export default function MapPage() {
 
       {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link
-          href="/"
-          style={{ padding: 8, background: "white", borderRadius: 999 }}
-        >
+        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
       </div>
 
-      {/* FOLLOW */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
+      {/* LOG HOUSE */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+        }}
+      >
+        <button
+          onClick={armLogHouse}
+          style={{
+            background: loggingMode ? "#16a34a" : "white",
+            borderRadius: 999,
+            padding: "12px 18px",
+          }}
+        >
+          Log House
         </button>
       </div>
 
-      {/* ACTION PANEL */}
-      <ActionPanel />
+      {/* STATUS */}
+      {showStatus && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 10,
+            borderRadius: 12,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            justifyContent: "center",
+            maxWidth: "90vw",
+            zIndex: 100,
+          }}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => savePin(s)}
+              style={{
+                background: s.color,
+                color: "white",
+                padding: "6px 10px",
+                borderRadius: 6,
+                fontSize: 12,
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+          <button onClick={cancelLog}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
