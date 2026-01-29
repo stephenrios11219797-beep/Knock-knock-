@@ -49,14 +49,13 @@ export default function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const watchIdRef = useRef<number | null>(null);
 
-  const followRef = useRef(true);
   const loggingRef = useRef(false);
+  const followRef = useRef(true);
+
   const pendingPinRef = useRef<mapboxgl.Marker | null>(null);
 
-  const userPosRef = useRef<{ lng: number; lat: number } | null>(null);
-
-  const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
+  const [, forceRender] = useState(0);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -72,7 +71,6 @@ export default function MapPage() {
     mapRef.current = map;
 
     map.on("load", () => {
-      /* USER LOCATION SOURCE */
       map.addSource("user-location", {
         type: "geojson",
         data: {
@@ -87,35 +85,35 @@ export default function MapPage() {
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            14,
-            12,
-            18,
-            28,
-          ],
+          "circle-radius": 22,
           "circle-color": "#3b82f6",
           "circle-opacity": 0.18,
         },
       });
 
-      /* BLUE DOT — SLIGHTLY BIGGER */
+      /* OUTER HALO */
+      map.addLayer({
+        id: "blue-halo",
+        type: "circle",
+        source: "user-location",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#ffffff",
+        },
+      });
+
+      /* BLUE DOT CORE */
       map.addLayer({
         id: "blue-dot",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 7,
-          "circle-color": "#2563eb",
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
+          "circle-radius": 6,
+          "circle-color": "#1d4ed8",
         },
       });
     });
 
-    /* MAP CLICK — LOG HOUSE */
     map.on("click", (e) => {
       if (!loggingRef.current) return;
 
@@ -142,7 +140,6 @@ export default function MapPage() {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude } = pos.coords;
-        userPosRef.current = { lng: longitude, lat: latitude };
 
         const feature = {
           type: "Feature",
@@ -179,20 +176,21 @@ export default function MapPage() {
   /* ---------- CONTROLS ---------- */
   const armLogHouse = () => {
     loggingRef.current = true;
-    setLoggingMode(true);
+    forceRender((v) => v + 1);
   };
 
   const cancelLog = () => {
     pendingPinRef.current?.remove();
     pendingPinRef.current = null;
     loggingRef.current = false;
-    setLoggingMode(false);
     setShowStatus(false);
   };
 
   const savePin = (status: any) => {
-    const lngLat = pendingPinRef.current!.getLngLat();
-    pendingPinRef.current!.remove();
+    if (!pendingPinRef.current) return;
+
+    const lngLat = pendingPinRef.current.getLngLat();
+    pendingPinRef.current.remove();
 
     savePinToStorage({
       lngLat,
@@ -203,7 +201,6 @@ export default function MapPage() {
 
     pendingPinRef.current = null;
     loggingRef.current = false;
-    setLoggingMode(false);
     setShowStatus(false);
   };
 
@@ -231,7 +228,7 @@ export default function MapPage() {
         <button
           onClick={armLogHouse}
           style={{
-            background: loggingMode ? "#16a34a" : "white",
+            background: loggingRef.current ? "#16a34a" : "white",
             borderRadius: 999,
             padding: "12px 18px",
           }}
