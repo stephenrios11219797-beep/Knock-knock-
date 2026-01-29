@@ -36,15 +36,27 @@ const haversine = (a, b) => {
   const R = 6371000;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
 
   const h =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    Math.cos(toRad(a.lat)) *
+      Math.cos(toRad(b.lat)) *
+      Math.sin(dLng / 2) ** 2;
 
   return 2 * R * Math.asin(Math.sqrt(h));
 };
+
+async function reverseGeocode(lng, lat) {
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
+    );
+    const data = await res.json();
+    return data.features?.[0]?.place_name || "Unknown address";
+  } catch {
+    return "Unknown address";
+  }
+}
 
 /* ---------- PIN ---------- */
 function createPin(color) {
@@ -60,19 +72,6 @@ function createPin(color) {
   `;
   el.style.transform = "translate(-50%, -100%)";
   return el;
-}
-
-/* ---------- REVERSE GEOCODE ---------- */
-async function getAddress(lng, lat) {
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
-    );
-    const data = await res.json();
-    return data.features?.[0]?.place_name || "Unknown address";
-  } catch {
-    return "Unknown address";
-  }
 }
 
 export default function MapPage() {
@@ -95,10 +94,9 @@ export default function MapPage() {
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-  const lastLogRef = useRef(null);
 
   const [selectedPin, setSelectedPin] = useState(null);
-
+  const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
 
   /* ---------- MAP INIT ---------- */
@@ -243,7 +241,6 @@ export default function MapPage() {
 
       if (dist <= RADIUS_METERS && bounds.contains([p.lngLat.lng, p.lngLat.lat])) {
         const el = createPin(p.color);
-
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           setSelectedPin(p);
@@ -258,31 +255,7 @@ export default function MapPage() {
     });
   };
 
-  /* ---------- CONTROLS ---------- */
-  const toggleFollow = () => {
-    followRef.current = !followRef.current;
-    setFollow(followRef.current);
-  };
-
-  const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
-    trailOnRef.current = !trailOnRef.current;
-    setTrailOn(trailOnRef.current);
-  };
-
+  /* ---------- LOGIC ---------- */
   const armLogHouse = () => {
     loggingRef.current = true;
     setLoggingMode(true);
@@ -292,7 +265,7 @@ export default function MapPage() {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const address = await getAddress(lngLat.lng, lngLat.lat);
+    const address = await reverseGeocode(lngLat.lng, lngLat.lat);
 
     const log = {
       lngLat,
@@ -300,6 +273,8 @@ export default function MapPage() {
       color: status.color,
       status: status.label,
       time: Date.now(),
+      severity: null,
+      notes: null,
     };
 
     savePinToStorage(log);
@@ -309,7 +284,6 @@ export default function MapPage() {
 
     renderNearbyPins();
 
-    pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
@@ -331,15 +305,6 @@ export default function MapPage() {
         <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
       </div>
 
       <div
@@ -371,23 +336,51 @@ export default function MapPage() {
             left: "50%",
             transform: "translateX(-50%)",
             background: "white",
-            padding: 14,
+            padding: 16,
             borderRadius: 14,
-            width: 300,
+            width: 320,
             zIndex: 300,
           }}
         >
-          <div style={{ fontWeight: 600 }}>{selectedPin.status}</div>
-          <div style={{ fontSize: 13, marginTop: 4 }}>
-            {selectedPin.address}
-          </div>
+          <div style={{ fontWeight: 600 }}>{selectedPin.address}</div>
+          <div>Status: {selectedPin.status}</div>
           {selectedPin.severity != null && (
             <div>Severity: {selectedPin.severity}</div>
           )}
           {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
-            {new Date(selectedPin.time).toLocaleTimeString()}
-          </div>
+        </div>
+      )}
+
+      {showSeverity && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 140,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 18,
+            borderRadius: 18,
+            width: 320,
+            zIndex: 400,
+          }}
+        >
+          <div style={{ marginBottom: 8 }}>Damage Severity</div>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            value={severity}
+            onChange={(e) => setSeverity(Number(e.target.value))}
+            style={{ width: "100%" }}
+          />
+          <textarea
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ width: "100%", marginTop: 8 }}
+          />
+          <button onClick={saveSeverity}>Save</button>
         </div>
       )}
     </div>
