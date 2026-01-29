@@ -39,16 +39,20 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring — ALWAYS visible
+      // Accuracy ring — SMALL like Maps
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
           "circle-radius": [
-            "coalesce",
-            ["get", "accuracy"],
-            30,
+            "interpolate",
+            ["linear"],
+            ["coalesce", ["get", "accuracy"], 20],
+            5, 12,
+            25, 18,
+            50, 26,
+            100, 36,
           ],
           "circle-color": "#3b82f6",
           "circle-opacity": 0.25,
@@ -93,13 +97,12 @@ export default function MapPage() {
                 coordinates: [longitude, latitude],
               },
               properties: {
-                accuracy: Math.max(accuracy, 25), // 👈 never 0
+                accuracy: Math.max(accuracy ?? 20, 20),
               },
             },
           ],
         });
 
-        // Always center first fix
         if (!hasCenteredRef.current) {
           map.easeTo({
             center: [longitude, latitude],
@@ -110,7 +113,6 @@ export default function MapPage() {
           return;
         }
 
-        // Follow afterwards
         if (followRef.current) {
           map.easeTo({
             center: [longitude, latitude],
