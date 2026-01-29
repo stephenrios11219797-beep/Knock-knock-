@@ -39,7 +39,7 @@ export default function MapPage() {
         },
       });
 
-      // Accuracy ring — SMALL like Maps
+      // 🍎 Apple-tight accuracy ring
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
@@ -48,14 +48,14 @@ export default function MapPage() {
           "circle-radius": [
             "interpolate",
             ["linear"],
-            ["coalesce", ["get", "accuracy"], 20],
-            5, 12,
-            25, 18,
-            50, 26,
-            100, 36,
+            ["coalesce", ["get", "accuracy"], 15],
+            5, 8,
+            15, 12,
+            30, 18,
+            60, 24,
           ],
           "circle-color": "#3b82f6",
-          "circle-opacity": 0.25,
+          "circle-opacity": 0.22,
         },
       });
 
@@ -65,7 +65,7 @@ export default function MapPage() {
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 6,
+          "circle-radius": 5,
           "circle-color": "#2563eb",
         },
       });
@@ -97,7 +97,7 @@ export default function MapPage() {
                 coordinates: [longitude, latitude],
               },
               properties: {
-                accuracy: Math.max(accuracy ?? 20, 20),
+                accuracy: Math.max(accuracy ?? 15, 15),
               },
             },
           ],
