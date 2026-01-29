@@ -7,12 +7,12 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-/* ---------- STATUS OPTIONS (NO KNOCK) ---------- */
+/* ---------- STATUS OPTIONS ---------- */
 const STATUS_OPTIONS = [
+  { label: "Walk", color: "#22c55e" },
+  { label: "Talk", color: "#0ea5e9" },
+  { label: "Soft Set", color: "#7c3aed" },
   { label: "No Answer", color: "#dc2626" },
-  { label: "Soft Set", color: "#0ea5e9" },
-  { label: "Contingency", color: "#7c3aed" },
-  { label: "Contract", color: "#d4af37" },
   { label: "Not Interested", color: "#4b5563" },
 ];
 
@@ -24,13 +24,6 @@ const loadAllPins = () =>
 
 const saveAllPins = (all) =>
   localStorage.setItem("pins", JSON.stringify(all));
-
-/* ---------- SEVERITY → COLOR ---------- */
-const severityColor = (v) => {
-  if (v >= 7) return "#dc2626";
-  if (v >= 4) return "#f59e0b";
-  return "#16a34a";
-};
 
 /* ---------- PIN ELEMENT ---------- */
 function createPin(color) {
@@ -47,39 +40,20 @@ function createPin(color) {
   return el;
 }
 
-/* ---------- REVERSE GEOCODE ---------- */
-async function reverseGeocode(lng, lat) {
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
-    );
-    const data = await res.json();
-    return data.features?.[0]?.place_name || "Unknown address";
-  } catch {
-    return "Unknown address";
-  }
-}
-
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const hasCenteredOnceRef = useRef(false);
 
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
-  const lastLogRef = useRef(null);
   const renderedPinsRef = useRef([]);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
-
   const [showStatus, setShowStatus] = useState(false);
-  const [showSeverity, setShowSeverity] = useState(false);
-
-  const [severity, setSeverity] = useState(5);
-  const [notes, setNotes] = useState("");
-
   const [selectedPin, setSelectedPin] = useState(null);
 
   /* ---------- MAP INIT ---------- */
@@ -122,16 +96,26 @@ export default function MapPage() {
         },
       });
 
+      map.addSource("trail", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "trail-line",
+        type: "line",
+        source: "trail",
+        paint: {
+          "line-width": 3,
+          "line-opacity": 0.6,
+        },
+      });
+
       renderSavedPins();
     });
 
-    /* Disable follow ONLY on user interaction */
-    map.on("mousedown", (e) => {
-      if (e.originalEvent) setFollow(false);
-    });
-    map.on("touchstart", (e) => {
-      if (e.originalEvent) setFollow(false);
-    });
+    map.on("mousedown", () => setFollow(false));
+    map.on("touchstart", () => setFollow(false));
 
     map.on("click", (e) => {
       if (!loggingRef.current) {
@@ -159,33 +143,48 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
+        const point = {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+        };
+
         mapRef.current
           ?.getSource("user-location")
           ?.setData({
             type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [longitude, latitude],
-                },
-              },
-            ],
+            features: [point],
           });
 
-        if (follow) {
+        if (!hasCenteredOnceRef.current) {
+          mapRef.current.easeTo({
+            center: [longitude, latitude],
+            zoom: 18,
+          });
+          hasCenteredOnceRef.current = true;
+        } else if (follow) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
             duration: 500,
           });
         }
+
+        if (trailOn) {
+          const src = mapRef.current.getSource("trail");
+          if (src) {
+            const data = src._data;
+            data.features.push(point);
+            src.setData(data);
+          }
+        }
       },
       () => {},
       { enableHighAccuracy: true }
     );
-  }, [follow]);
+  }, [follow, trailOn]);
 
   /* ---------- RENDER PINS ---------- */
   const renderSavedPins = () => {
@@ -217,18 +216,16 @@ export default function MapPage() {
     pendingPinRef.current?.remove();
   };
 
-  const savePin = async (status) => {
+  const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const address = await reverseGeocode(lngLat.lng, lngLat.lat);
-
     const log = {
       lngLat,
-      color: status.color,
       status: status.label,
+      color: status.color,
       time: Date.now(),
-      address,
+      address: `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`,
     };
 
     const all = loadAllPins();
@@ -236,57 +233,32 @@ export default function MapPage() {
     all[today] = [...(all[today] || []), log];
     saveAllPins(all);
 
-    lastLogRef.current = log;
-
-    if (status.label === "No Answer" || status.label === "Not Interested") {
-      setShowSeverity(true);
-    } else {
-      renderSavedPins();
-    }
-
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
-  };
-
-  const saveSeverity = () => {
-    const all = loadAllPins();
-    const today = todayKey();
-
-    all[today] = all[today].map((p) =>
-      p.time === lastLogRef.current.time
-        ? {
-            ...p,
-            severity,
-            notes,
-            color: severityColor(severity),
-          }
-        : p
-    );
-
-    saveAllPins(all);
-
-    setSeverity(5);
-    setNotes("");
-    setShowSeverity(false);
-
-    loggingRef.current = false;
-    setLoggingMode(false);
 
     renderSavedPins();
   };
+
+  /* ---------- TRAIL TOGGLE RESET ---------- */
+  useEffect(() => {
+    if (!trailOn && mapRef.current?.getSource("trail")) {
+      mapRef.current.getSource("trail").setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+    }
+  }, [trailOn]);
 
   /* ---------- UI ---------- */
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 500 }}>
         <Link href="/">Home</Link>
       </div>
 
-      {/* TOP RIGHT */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 500, display: "flex", gap: 8 }}>
         <button onClick={() => setFollow(!follow)}>
           {follow ? "Following" : "Free Look"}
@@ -296,7 +268,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* LOG HOUSE */}
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 500 }}>
         <button
           onClick={armLogHouse}
@@ -310,7 +281,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* STATUS */}
       {showStatus && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20, borderRadius: 18, width: 360, zIndex: 600 }}>
           {STATUS_OPTIONS.map((s) => (
@@ -325,23 +295,10 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* SEVERITY */}
-      {showSeverity && (
-        <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: "white", padding: 18, borderRadius: 16, width: 340, zIndex: 700 }}>
-          <div style={{ color: severityColor(severity) }}>Severity: {severity}</div>
-          <input type="range" min="1" max="10" value={severity} onChange={(e) => setSeverity(+e.target.value)} />
-          <textarea placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
-          <button onClick={saveSeverity}>Save</button>
-        </div>
-      )}
-
-      {/* PIN INFO */}
       {selectedPin && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 340, zIndex: 800 }}>
           <strong>{selectedPin.status}</strong>
           <div>{selectedPin.address}</div>
-          {selectedPin.severity && <div>Severity: {selectedPin.severity}</div>}
-          {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
         </div>
       )}
     </div>
