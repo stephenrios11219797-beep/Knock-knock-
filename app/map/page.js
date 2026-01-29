@@ -7,6 +7,7 @@ import Link from "next/link";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+/* ---------- CONSTANTS ---------- */
 const STATUS_OPTIONS = [
   { label: "Walked", color: "#16a34a" },
   { label: "No Answer", color: "#dc2626" },
@@ -29,7 +30,7 @@ const savePinToStorage = (pin) => {
   localStorage.setItem("pins", JSON.stringify(all));
 };
 
-/* ---------- PIN ---------- */
+/* ---------- PIN ELEMENT ---------- */
 function createPin(color) {
   const el = document.createElement("div");
   el.innerHTML = `
@@ -46,19 +47,26 @@ function createPin(color) {
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
-  const watchIdRef = useRef(null);
 
+  const watchIdRef = useRef(null);
   const followRef = useRef(true);
   const trailOnRef = useRef(false);
   const activeSegmentRef = useRef(null);
 
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
+  const pendingLngLatRef = useRef(null);
+
+  const lastLogRef = useRef(null);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
   const [loggingMode, setLoggingMode] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
+
+  const [showSeverity, setShowSeverity] = useState(false);
+  const [severity, setSeverity] = useState(5);
+  const [notes, setNotes] = useState("");
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
@@ -79,17 +87,26 @@ export default function MapPage() {
         data: { type: "FeatureCollection", features: [] },
       });
 
+      /* Accuracy ring (Apple-tight, stable) */
       map.addLayer({
         id: "accuracy",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": ["get", "accuracy"],
-          "circle-color": "#3b82f6",
-          "circle-opacity": 0.2,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10, ["*", ["get", "accuracy"], 0.25],
+            15, ["*", ["get", "accuracy"], 0.6],
+            18, ["*", ["get", "accuracy"], 1.2],
+          ],
+          "circle-color": "#2563eb",
+          "circle-opacity": 0.15,
         },
       });
 
+      /* Blue dot */
       map.addLayer({
         id: "dot",
         type: "circle",
@@ -100,6 +117,7 @@ export default function MapPage() {
         },
       });
 
+      /* Trail */
       map.addSource("trail", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -120,6 +138,7 @@ export default function MapPage() {
       if (!loggingRef.current) return;
 
       pendingPinRef.current?.remove();
+      pendingLngLatRef.current = e.lngLat;
 
       pendingPinRef.current = new mapboxgl.Marker({
         element: createPin("#9ca3af"),
@@ -130,17 +149,26 @@ export default function MapPage() {
       setShowStatus(true);
     });
 
+    return () => {
+      if (watchIdRef.current)
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      map.remove();
+    };
+  }, []);
+
+  /* ---------- GPS ---------- */
+  useEffect(() => {
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude, accuracy } = pos.coords;
 
-        map.getSource("user-location")?.setData({
+        mapRef.current?.getSource("user-location")?.setData({
           type: "FeatureCollection",
           features: [
             {
               type: "Feature",
               geometry: { type: "Point", coordinates: [longitude, latitude] },
-              properties: { accuracy: accuracy || 20 },
+              properties: { accuracy },
             },
           ],
         });
@@ -150,13 +178,13 @@ export default function MapPage() {
             longitude,
             latitude,
           ]);
-          map.getSource("trail").setData(
-            map.getSource("trail")._data
+          mapRef.current.getSource("trail").setData(
+            mapRef.current.getSource("trail")._data
           );
         }
 
         if (followRef.current) {
-          map.easeTo({
+          mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
           });
@@ -165,12 +193,6 @@ export default function MapPage() {
       () => {},
       { enableHighAccuracy: true }
     );
-
-    return () => {
-      if (watchIdRef.current)
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      map.remove();
-    };
   }, []);
 
   /* ---------- CONTROLS ---------- */
@@ -198,7 +220,6 @@ export default function MapPage() {
     setTrailOn(trailOnRef.current);
   };
 
-  /* ---------- LOG HOUSE ---------- */
   const armLogHouse = () => {
     loggingRef.current = true;
     setLoggingMode(true);
@@ -207,30 +228,78 @@ export default function MapPage() {
   const cancelLog = () => {
     pendingPinRef.current?.remove();
     pendingPinRef.current = null;
+    pendingLngLatRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
   };
 
   const savePin = (status) => {
-    const lngLat = pendingPinRef.current.getLngLat();
-    pendingPinRef.current.remove();
+    if (!pendingLngLatRef.current) return;
 
-    savePinToStorage({
-      lngLat,
+    const log = {
+      lngLat: pendingLngLatRef.current,
       color: status.color,
       status: status.label,
       time: Date.now(),
-    });
+    };
 
+    savePinToStorage(log);
+    lastLogRef.current = log;
+
+    pendingPinRef.current?.remove();
     pendingPinRef.current = null;
+    pendingLngLatRef.current = null;
+
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
+
+    if (["No Answer", "Not Interested"].includes(status.label)) {
+      setShowSeverity(true);
+    }
   };
 
+  const saveSeverity = () => {
+    lastLogRef.current.severity = severity;
+    lastLogRef.current.notes = notes || null;
+    setSeverity(5);
+    setNotes("");
+    setShowSeverity(false);
+  };
+
+  /* ---------- UI ---------- */
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
+      <style>{`
+        .severity-slider {
+          -webkit-appearance: none;
+          width: 100%;
+          height: 18px;
+          border-radius: 9999px;
+        }
+        .severity-slider::-webkit-slider-runnable-track {
+          height: 18px;
+          border-radius: 9999px;
+          background: linear-gradient(
+            to right,
+            #16a34a 0%,
+            #facc15 40%,
+            #f97316 70%,
+            #dc2626 100%
+          );
+        }
+        .severity-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 28px;
+          width: 28px;
+          background: white;
+          border-radius: 50%;
+          border: 2px solid #000;
+          margin-top: -5px;
+        }
+      `}</style>
+
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* HOME */}
@@ -251,15 +320,7 @@ export default function MapPage() {
       </div>
 
       {/* LOG HOUSE */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
-      >
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
         <button
           onClick={armLogHouse}
           style={{
@@ -274,22 +335,19 @@ export default function MapPage() {
 
       {/* STATUS */}
       {showStatus && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 10,
-            borderRadius: 12,
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-            justifyContent: "center",
-            zIndex: 100,
-          }}
-        >
+        <div style={{
+          position: "fixed",
+          bottom: 90,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 10,
+          borderRadius: 12,
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          zIndex: 100,
+        }}>
           {STATUS_OPTIONS.map((s) => (
             <button
               key={s.label}
@@ -305,9 +363,42 @@ export default function MapPage() {
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog} style={{ fontSize: 12 }}>
-            Cancel
-          </button>
+          <button onClick={cancelLog}>Cancel</button>
+        </div>
+      )}
+
+      {/* SEVERITY */}
+      {showSeverity && (
+        <div style={{
+          position: "fixed",
+          bottom: 130,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 22,
+          borderRadius: 18,
+          width: 320,
+          zIndex: 200,
+        }}>
+          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            value={severity}
+            onChange={(e) => setSeverity(Number(e.target.value))}
+            className="severity-slider"
+          />
+          <textarea
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            style={{ marginTop: 12, width: "100%", height: 80, fontSize: 16 }}
+          />
+          <div style={{ display: "flex", gap: 12, marginTop: 14 }}>
+            <button onClick={saveSeverity}>Save</button>
+            <button onClick={() => setShowSeverity(false)}>Skip</button>
+          </div>
         </div>
       )}
     </div>
