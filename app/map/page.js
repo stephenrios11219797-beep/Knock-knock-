@@ -59,13 +59,13 @@ export default function MapPage() {
         },
       });
 
-      // Blue dot
+      // 🍎 Apple Maps–size blue dot (slightly larger)
       map.addLayer({
         id: "user-dot",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 5,
+          "circle-radius": 7, // ⬅️ was 5
           "circle-color": "#2563eb",
         },
       });
