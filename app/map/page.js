@@ -158,6 +158,10 @@ export default function MapPage() {
       () => {},
       { enableHighAccuracy: true }
     );
+
+    return () =>
+      watchIdRef.current &&
+      navigator.geolocation.clearWatch(watchIdRef.current);
   }, [follow]);
 
   /* ---------- RENDER SAVED PINS ---------- */
@@ -200,6 +204,19 @@ export default function MapPage() {
       address: `${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}`,
     };
 
+    // DROP FINAL PIN IMMEDIATELY
+    const el = createPin(status.color);
+    el.onclick = (e) => {
+      e.stopPropagation();
+      setSelectedPin(log);
+    };
+
+    const marker = new mapboxgl.Marker({ element: el })
+      .setLngLat(lngLat)
+      .addTo(mapRef.current);
+
+    renderedPinsRef.current.push(marker);
+
     savePinToStorage(log);
     lastLogRef.current = log;
 
@@ -218,6 +235,7 @@ export default function MapPage() {
   const saveSeverity = () => {
     lastLogRef.current.severity = severity;
     lastLogRef.current.notes = notes || null;
+    savePinToStorage(lastLogRef.current);
 
     setSeverity(5);
     setNotes("");
@@ -230,10 +248,12 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
+      {/* TOP LEFT */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 100 }}>
         <Link href="/">← Home</Link>
       </div>
 
+      {/* TOP RIGHT */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 100 }}>
         <button onClick={() => setFollow(!follow)}>
           {follow ? "Following" : "Free Look"}
@@ -243,7 +263,16 @@ export default function MapPage() {
         </button>
       </div>
 
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100 }}>
+      {/* LOG HOUSE */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 100,
+        }}
+      >
         <button
           onClick={armLogHouse}
           style={{
@@ -256,29 +285,32 @@ export default function MapPage() {
         </button>
       </div>
 
+      {/* STATUS SELECT */}
       {showStatus && (
-        <div style={{
-          position: "fixed",
-          bottom: 90,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 18,
-          borderRadius: 16,
-          width: 340,
-          zIndex: 200,
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 18,
+            borderRadius: 16,
+            width: 360,
+            zIndex: 200,
+          }}
+        >
           {STATUS_OPTIONS.map((s) => (
             <button
               key={s.label}
               onClick={() => savePin(s)}
               style={{
                 width: "100%",
-                padding: 14,
-                marginBottom: 8,
+                padding: 16,
+                marginBottom: 10,
                 background: s.color,
                 color: "white",
-                borderRadius: 10,
+                borderRadius: 12,
               }}
             >
               {s.label}
@@ -287,18 +319,21 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* SEVERITY */}
       {showSeverity && (
-        <div style={{
-          position: "fixed",
-          bottom: 100,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 18,
-          borderRadius: 16,
-          width: 320,
-          zIndex: 300,
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 100,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 18,
+            borderRadius: 16,
+            width: 340,
+            zIndex: 300,
+          }}
+        >
           <div>Severity: {severity}</div>
           <input
             type="range"
@@ -317,21 +352,26 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* PIN INFO */}
       {selectedPin && (
-        <div style={{
-          position: "fixed",
-          bottom: 90,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          padding: 16,
-          borderRadius: 16,
-          width: 320,
-          zIndex: 400,
-        }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 90,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 16,
+            borderRadius: 16,
+            width: 340,
+            zIndex: 400,
+          }}
+        >
           <strong>{selectedPin.status}</strong>
           <div>{selectedPin.address}</div>
-          {selectedPin.severity != null && <div>Severity: {selectedPin.severity}</div>}
+          {selectedPin.severity != null && (
+            <div>Severity: {selectedPin.severity}</div>
+          )}
           {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
         </div>
       )}
