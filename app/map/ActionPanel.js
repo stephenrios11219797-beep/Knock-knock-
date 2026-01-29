@@ -1,21 +1,27 @@
 "use client";
 
-export default function ActionPanel() {
+export default function ActionPanel({ onLogHouse }) {
   return (
     <div
       style={{
         position: "fixed",
-        bottom: 140,
-        left: 16,
-        zIndex: 9999,
-        background: "red",
-        color: "white",
-        padding: 16,
-        borderRadius: 8,
-        fontSize: 16,
+        bottom: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 100,
       }}
     >
-      ACTION PANEL IS RENDERING
+      <button
+        onClick={onLogHouse}
+        style={{
+          background: "white",
+          padding: "12px 18px",
+          borderRadius: 999,
+          fontSize: 16,
+        }}
+      >
+        Log House
+      </button>
     </div>
   );
 }
