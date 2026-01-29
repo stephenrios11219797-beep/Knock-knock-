@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import ActionPanel from './ActionPanel';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -10,13 +11,13 @@ export default function Page() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
 
-  const userMarkerRef = useRef(null);
-  const accuracyRingRef = useRef(null);
+  const userDotRef = useRef(null);
+  const haloRef = useRef(null);
 
   const [pins, setPins] = useState([]);
   const [logMode, setLogMode] = useState(false);
 
-  /* ---------- MAP INIT ---------- */
+  /* ---------- INIT MAP ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
@@ -32,54 +33,52 @@ export default function Page() {
     /* ---------- GPS ---------- */
     navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-
+        const { latitude, longitude } = pos.coords;
         const lngLat = [longitude, latitude];
 
-        // --- Blue dot (Apple style)
-        if (!userMarkerRef.current) {
+        // --- Apple-style blue dot
+        if (!userDotRef.current) {
           const dot = document.createElement('div');
-          dot.style.width = '16px';
-          dot.style.height = '16px';
+          dot.style.width = '14px';
+          dot.style.height = '14px';
           dot.style.borderRadius = '50%';
-          dot.style.background = '#2563eb';
-          dot.style.border = '3px solid white';
-          dot.style.boxShadow = '0 0 2px rgba(0,0,0,0.4)';
+          dot.style.background = '#007AFF'; // Apple blue
+          dot.style.border = '2px solid white';
+          dot.style.boxShadow = '0 0 1px rgba(0,0,0,0.4)';
 
-          userMarkerRef.current = new mapboxgl.Marker(dot)
+          userDotRef.current = new mapboxgl.Marker(dot)
             .setLngLat(lngLat)
             .addTo(mapRef.current);
         } else {
-          userMarkerRef.current.setLngLat(lngLat);
+          userDotRef.current.setLngLat(lngLat);
         }
 
-        // --- Accuracy ring (tight, stable)
-        if (accuracyRingRef.current) {
-          accuracyRingRef.current.remove();
+        // --- Tight static halo (Apple-like)
+        if (!haloRef.current) {
+          const halo = document.createElement('div');
+          halo.style.width = '28px';
+          halo.style.height = '28px';
+          halo.style.borderRadius = '50%';
+          halo.style.background = 'rgba(0,122,255,0.18)';
+
+          haloRef.current = new mapboxgl.Marker(halo)
+            .setLngLat(lngLat)
+            .addTo(mapRef.current);
+        } else {
+          haloRef.current.setLngLat(lngLat);
         }
 
-        const ring = document.createElement('div');
-        ring.style.width = '40px';
-        ring.style.height = '40px';
-        ring.style.borderRadius = '50%';
-        ring.style.background = 'rgba(37,99,235,0.15)';
-
-        accuracyRingRef.current = new mapboxgl.Marker(ring)
-          .setLngLat(lngLat)
-          .addTo(mapRef.current);
-
-        // Follow user
         mapRef.current.easeTo({ center: lngLat });
       },
       () => {},
       { enableHighAccuracy: true }
     );
 
-    /* ---------- MAP CLICK (LOG HOUSE) ---------- */
+    /* ---------- MAP CLICK → LOG HOUSE ---------- */
     mapRef.current.on('click', (e) => {
       if (!logMode) return;
 
-      const newPin = {
+      const pin = {
         id: Date.now(),
         lng: e.lngLat.lng,
         lat: e.lngLat.lat,
@@ -87,7 +86,7 @@ export default function Page() {
         timestamp: new Date().toLocaleString(),
       };
 
-      setPins((prev) => [...prev, newPin]);
+      setPins((p) => [...p, pin]);
       setLogMode(false);
     });
   }, [logMode]);
@@ -112,15 +111,18 @@ export default function Page() {
     });
   }, [pins]);
 
-  /* ---------- EXPOSE LOG MODE (TEMP GLOBAL) ---------- */
+  /* ---------- EXPOSE LOG ACTION ---------- */
   useEffect(() => {
-    window.enableLogHouse = () => setLogMode(true);
+    window.logHouse = () => setLogMode(true);
   }, []);
 
   return (
-    <div
-      ref={mapContainerRef}
-      style={{ width: '100%', height: '100vh' }}
-    />
+    <>
+      <div
+        ref={mapContainerRef}
+        style={{ width: '100%', height: '100vh' }}
+      />
+      <ActionPanel />
+    </>
   );
 }
