@@ -105,23 +105,25 @@ export default function MapPage() {
         data: { type: "FeatureCollection", features: [] },
       });
 
+      /* ---- Apple-style ring (fixed, subtle, no flicker) ---- */
       map.addLayer({
-        id: "accuracy",
+        id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": ["get", "accuracy"],
+          "circle-radius": 18,       // SMALL + CONSTANT
           "circle-color": "#3b82f6",
-          "circle-opacity": 0.2,
+          "circle-opacity": 0.18,
         },
       });
 
+      /* ---- Blue dot ---- */
       map.addLayer({
-        id: "dot",
+        id: "user-dot",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 6,
+          "circle-radius": 7,        // Slightly bigger dot
           "circle-color": "#2563eb",
         },
       });
@@ -180,7 +182,7 @@ export default function MapPage() {
             {
               type: "Feature",
               geometry: { type: "Point", coordinates: [longitude, latitude] },
-              properties: { accuracy: 20 },
+              properties: {},
             },
           ],
         });
@@ -314,35 +316,6 @@ export default function MapPage() {
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <style>{`
-        .severity-slider {
-          -webkit-appearance: none;
-          width: 100%;
-          height: 18px;
-          border-radius: 9999px;
-        }
-        .severity-slider::-webkit-slider-runnable-track {
-          height: 18px;
-          border-radius: 9999px;
-          background: linear-gradient(
-            to right,
-            #16a34a 0%,
-            #facc15 40%,
-            #f97316 70%,
-            #dc2626 100%
-          );
-        }
-        .severity-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          height: 28px;
-          width: 28px;
-          background: white;
-          border-radius: 50%;
-          border: 2px solid #000;
-          margin-top: -5px;
-        }
-      `}</style>
-
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
       {/* HOME */}
@@ -384,7 +357,7 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* STATUS */}
+      {/* STATUS + SEVERITY (unchanged) */}
       {showStatus && (
         <div
           style={{
@@ -418,13 +391,10 @@ export default function MapPage() {
               {s.label}
             </button>
           ))}
-          <button onClick={cancelLog} style={{ fontSize: 12, padding: "6px 10px" }}>
-            Cancel
-          </button>
+          <button onClick={cancelLog}>Cancel</button>
         </div>
       )}
 
-      {/* SEVERITY + NOTES */}
       {showSeverity && (
         <div
           style={{
@@ -437,12 +407,9 @@ export default function MapPage() {
             borderRadius: 18,
             width: 320,
             zIndex: 200,
-            touchAction: "manipulation",
           }}
         >
-          <div style={{ fontSize: 16, marginBottom: 10 }}>
-            Roof Damage Severity
-          </div>
+          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
 
           <input
             type="range"
@@ -450,37 +417,19 @@ export default function MapPage() {
             max={10}
             value={severity}
             onChange={(e) => setSeverity(Number(e.target.value))}
-            className="severity-slider"
+            style={{ width: "100%" }}
           />
 
           <textarea
             placeholder="Notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            style={{
-              marginTop: 12,
-              width: "100%",
-              height: 80,
-              borderRadius: 8,
-              border: "1px solid #d1d5db",
-              padding: 10,
-              fontSize: 16, // PREVENTS iOS ZOOM
-            }}
+            style={{ width: "100%", height: 80, marginTop: 10 }}
           />
 
-          <div style={{ display: "flex", gap: 12, marginTop: 14 }}>
-            <button
-              onClick={saveSeverity}
-              style={{ padding: "10px 16px", fontSize: 16 }}
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setShowSeverity(false)}
-              style={{ padding: "10px 16px", fontSize: 16 }}
-            >
-              Skip
-            </button>
+          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+            <button onClick={saveSeverity}>Save</button>
+            <button onClick={() => setShowSeverity(false)}>Skip</button>
           </div>
         </div>
       )}
