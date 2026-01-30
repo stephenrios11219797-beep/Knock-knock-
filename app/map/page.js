@@ -9,9 +9,10 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
 /* ---------- STATUS OPTIONS ---------- */
 const STATUS_OPTIONS = [
-  { label: "Walk", color: "#16a34a" },
-  { label: "Soft Set", color: "#0ea5e9" },
   { label: "No Answer", color: "#dc2626" },
+  { label: "Soft Set", color: "#0ea5e9" },
+  { label: "Contingency", color: "#7c3aed" },
+  { label: "Contract", color: "#d4af37" },
   { label: "Not Interested", color: "#4b5563" },
 ];
 
@@ -24,14 +25,14 @@ const loadAllPins = () =>
 const saveAllPins = (all: any) =>
   localStorage.setItem("pins", JSON.stringify(all));
 
-/* ---------- SEVERITY → COLOR ---------- */
+/* ---------- SEVERITY COLOR ---------- */
 const severityColor = (v: number) => {
   if (v >= 7) return "#dc2626";
   if (v >= 4) return "#f59e0b";
   return "#16a34a";
 };
 
-/* ---------- PIN ELEMENT ---------- */
+/* ---------- PIN ---------- */
 function createPin(color: string) {
   const el = document.createElement("div");
   el.innerHTML = `
@@ -53,21 +54,21 @@ async function reverseGeocode(lng: number, lat: number) {
       `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
     );
     const data = await res.json();
-    return data.features?.[0]?.place_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return data.features?.[0]?.place_name || "Unknown address";
   } catch {
-    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return "Unknown address";
   }
 }
 
 export default function MapPage() {
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const watchIdRef = useRef<number | null>(null);
 
   const loggingRef = useRef(false);
-  const pendingPinRef = useRef<mapboxgl.Marker | null>(null);
+  const pendingPinRef = useRef<any>(null);
   const lastLogRef = useRef<any>(null);
-  const renderedPinsRef = useRef<mapboxgl.Marker[]>([]);
+  const renderedPinsRef = useRef<any[]>([]);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -166,7 +167,7 @@ export default function MapPage() {
           });
 
         if (follow) {
-          mapRef.current?.easeTo({
+          mapRef.current.easeTo({
             center: [longitude, latitude],
             zoom: 18,
             duration: 500,
@@ -194,7 +195,7 @@ export default function MapPage() {
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat(p.lngLat)
-        .addTo(mapRef.current!);
+        .addTo(mapRef.current);
 
       renderedPinsRef.current.push(marker);
     });
@@ -209,20 +210,17 @@ export default function MapPage() {
   };
 
   const savePin = async (status: any) => {
-    if (!pendingPinRef.current) return;
-
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
-    pendingPinRef.current = null;
 
     const address = await reverseGeocode(lngLat.lng, lngLat.lat);
 
     const log = {
       lngLat,
-      color: status.color,
       status: status.label,
-      time: Date.now(),
+      color: status.color,
       address,
+      time: Date.now(),
     };
 
     const all = loadAllPins();
@@ -231,15 +229,16 @@ export default function MapPage() {
     saveAllPins(all);
 
     lastLogRef.current = log;
-    setShowStatus(false);
 
-    if (status.label === "Not Interested") {
+    if (status.label === "No Answer" || status.label === "Not Interested") {
       setShowSeverity(true);
     } else {
       renderSavedPins();
-      loggingRef.current = false;
-      setLoggingMode(false);
     }
+
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
   };
 
   const saveSeverity = () => {
@@ -262,8 +261,6 @@ export default function MapPage() {
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
-    loggingRef.current = false;
-    setLoggingMode(false);
 
     renderSavedPins();
   };
@@ -273,44 +270,18 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* TOP LEFT */}
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 500 }}>
-        <Link href="/">Home</Link>
-      </div>
-
-      {/* TOP RIGHT */}
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 500, display: "flex", gap: 8 }}>
-        <button onClick={() => setFollow(!follow)}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={() => setTrailOn(!trailOn)}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
       {/* LOG HOUSE */}
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 500 }}>
-        <button
-          onClick={armLogHouse}
-          style={{
-            padding: "14px 26px",
-            borderRadius: 999,
-            background: loggingMode ? "#16a34a" : "white",
-          }}
-        >
+        <button onClick={armLogHouse} style={{ padding: "14px 26px", borderRadius: 999 }}>
           Log House
         </button>
       </div>
 
       {/* STATUS MENU */}
       {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 280, zIndex: 600 }}>
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 300 }}>
           {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() => savePin(s)}
-              style={{ width: "100%", padding: 12, marginBottom: 8, background: s.color, color: "white", borderRadius: 10 }}
-            >
+            <button key={s.label} onClick={() => savePin(s)} style={{ width: "100%", padding: 14, marginBottom: 6, background: s.color, color: "white", borderRadius: 10 }}>
               {s.label}
             </button>
           ))}
@@ -319,9 +290,19 @@ export default function MapPage() {
 
       {/* SEVERITY */}
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: "white", padding: 18, borderRadius: 16, width: 320, zIndex: 700 }}>
-          <div style={{ color: severityColor(severity) }}>Severity: {severity}</div>
-          <input type="range" min="1" max="10" value={severity} onChange={(e) => setSeverity(+e.target.value)} />
+        <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: "white", padding: 18, borderRadius: 16, width: 320 }}>
+          <div style={{ color: severityColor(severity), fontWeight: 600 }}>Severity: {severity}</div>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            value={severity}
+            onChange={(e) => setSeverity(+e.target.value)}
+            style={{
+              width: "100%",
+              accentColor: severityColor(severity),
+            }}
+          />
           <textarea placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
           <button onClick={saveSeverity}>Save</button>
         </div>
@@ -329,7 +310,7 @@ export default function MapPage() {
 
       {/* PIN INFO */}
       {selectedPin && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 320, zIndex: 800 }}>
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 16, borderRadius: 16, width: 320 }}>
           <strong>{selectedPin.status}</strong>
           <div>{selectedPin.address}</div>
           {selectedPin.severity && <div>Severity: {selectedPin.severity}</div>}
