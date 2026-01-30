@@ -23,11 +23,14 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
+const saveAllPins = (data) =>
+  localStorage.setItem("pins", JSON.stringify(data));
+
 const savePinToStorage = (pin) => {
   const all = loadAllPins();
   const today = todayKey();
   all[today] = [...(all[today] || []), pin];
-  localStorage.setItem("pins", JSON.stringify(all));
+  saveAllPins(all);
 };
 
 /* ---------- UTILS ---------- */
@@ -82,8 +85,8 @@ export default function MapPage() {
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-  const lastLogRef = useRef(null);
 
+  const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
 
   /* ---------- MAP INIT ---------- */
@@ -105,25 +108,23 @@ export default function MapPage() {
         data: { type: "FeatureCollection", features: [] },
       });
 
-      /* ---- Apple-style ring (fixed, subtle, no flicker) ---- */
       map.addLayer({
         id: "accuracy-ring",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 18,       // SMALL + CONSTANT
+          "circle-radius": 18,
           "circle-color": "#3b82f6",
           "circle-opacity": 0.18,
         },
       });
 
-      /* ---- Blue dot ---- */
       map.addLayer({
         id: "user-dot",
         type: "circle",
         source: "user-location",
         paint: {
-          "circle-radius": 7,        // Slightly bigger dot
+          "circle-radius": 7,
           "circle-color": "#2563eb",
         },
       });
@@ -289,6 +290,8 @@ export default function MapPage() {
       color: status.color,
       status: status.label,
       time: Date.now(),
+      severity: null,
+      notes: null,
     };
 
     savePinToStorage(log);
@@ -306,9 +309,22 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
+  /* ---------- SAVE SEVERITY + NOTES (PERSISTED) ---------- */
   const saveSeverity = () => {
+    if (!lastLogRef.current) return;
+
     lastLogRef.current.severity = severity;
     lastLogRef.current.notes = notes || null;
+
+    const all = loadAllPins();
+    const today = todayKey();
+
+    all[today] = all[today].map((p) =>
+      p.time === lastLogRef.current.time ? lastLogRef.current : p
+    );
+
+    saveAllPins(all);
+
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
@@ -318,14 +334,12 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* HOME */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
       </div>
 
-      {/* TOP RIGHT */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         <button onClick={toggleFollow}>
           {follow ? "Following" : "Free Look"}
@@ -335,59 +349,16 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* LOG HOUSE */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 50,
-        }}
-      >
-        <button
-          onClick={armLogHouse}
-          style={{
-            background: loggingMode ? "#16a34a" : "white",
-            borderRadius: 999,
-            padding: "12px 18px",
-          }}
-        >
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
+        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
           Log House
         </button>
       </div>
 
-      {/* STATUS + SEVERITY (unchanged) */}
       {showStatus && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 90,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 10,
-            borderRadius: 12,
-            display: "flex",
-            gap: 6,
-            flexWrap: "wrap",
-            justifyContent: "center",
-            maxWidth: "90vw",
-            zIndex: 100,
-          }}
-        >
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
           {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() => savePin(s)}
-              style={{
-                background: s.color,
-                color: "white",
-                padding: "6px 10px",
-                borderRadius: 6,
-                fontSize: 12,
-              }}
-            >
+            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
               {s.label}
             </button>
           ))}
@@ -396,36 +367,12 @@ export default function MapPage() {
       )}
 
       {showSeverity && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 130,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 22,
-            borderRadius: 18,
-            width: 320,
-            zIndex: 200,
-          }}
-        >
+        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
           <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
 
-          <input
-            type="range"
-            min={0}
-            max={10}
-            value={severity}
-            onChange={(e) => setSeverity(Number(e.target.value))}
-            style={{ width: "100%" }}
-          />
+          <input type="range" min={0} max={10} value={severity} onChange={(e) => setSeverity(Number(e.target.value))} style={{ width: "100%" }} />
 
-          <textarea
-            placeholder="Notes (optional)"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ width: "100%", height: 80, marginTop: 10 }}
-          />
+          <textarea placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", height: 80, marginTop: 10 }} />
 
           <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
