@@ -25,7 +25,7 @@ const loadAllPins = () =>
 const saveAllPins = (all) =>
   localStorage.setItem("pins", JSON.stringify(all));
 
-/* ---------- SEVERITY → COLOR ---------- */
+/* ---------- SEVERITY COLOR ---------- */
 const severityColor = (v) => {
   if (v >= 7) return "#dc2626";
   if (v >= 4) return "#f59e0b";
@@ -62,13 +62,12 @@ async function reverseGeocode(lng, lat) {
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
-  const watchIdRef = useRef(null);
+  const trailCoordsRef = useRef([]);
 
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
   const lastLogRef = useRef(null);
   const renderedPinsRef = useRef([]);
-  const trailRef = useRef([]);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -122,6 +121,21 @@ export default function MapPage() {
         },
       });
 
+      map.addSource("trail", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "trail-line",
+        type: "line",
+        source: "trail",
+        paint: {
+          "line-color": "#2563eb",
+          "line-width": 4,
+        },
+      });
+
       renderSavedPins();
     });
 
@@ -150,25 +164,38 @@ export default function MapPage() {
 
   /* ---------- GPS ---------- */
   useEffect(() => {
-    watchIdRef.current = navigator.geolocation.watchPosition(
+    const id = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude, latitude } = pos.coords;
 
         if (trailOn) {
-          trailRef.current.push([longitude, latitude]);
-        } else {
-          trailRef.current = [];
+          trailCoordsRef.current.push([longitude, latitude]);
+          mapRef.current?.getSource("trail")?.setData({
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "LineString",
+                  coordinates: trailCoordsRef.current,
+                },
+              },
+            ],
+          });
         }
 
-        mapRef.current
-          ?.getSource("user-location")
-          ?.setData({
-            type: "FeatureCollection",
-            features: [{
+        mapRef.current?.getSource("user-location")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
               type: "Feature",
-              geometry: { type: "Point", coordinates: [longitude, latitude] },
-            }],
-          });
+              geometry: {
+                type: "Point",
+                coordinates: [longitude, latitude],
+              },
+            },
+          ],
+        });
 
         if (follow) {
           mapRef.current.easeTo({
@@ -181,6 +208,8 @@ export default function MapPage() {
       () => {},
       { enableHighAccuracy: true }
     );
+
+    return () => navigator.geolocation.clearWatch(id);
   }, [follow, trailOn]);
 
   /* ---------- RENDER PINS ---------- */
@@ -213,14 +242,6 @@ export default function MapPage() {
     pendingPinRef.current?.remove();
   };
 
-  const cancelLog = () => {
-    loggingRef.current = false;
-    setLoggingMode(false);
-    setShowStatus(false);
-    setShowSeverity(false);
-    pendingPinRef.current?.remove();
-  };
-
   const savePin = async (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
@@ -248,9 +269,9 @@ export default function MapPage() {
       renderSavedPins();
     }
 
-    setShowStatus(false);
-    setLoggingMode(false);
     loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
   };
 
   const saveSeverity = () => {
@@ -280,39 +301,31 @@ export default function MapPage() {
       </div>
 
       <div style={{ position: "fixed", top: 12, right: 12, display: "flex", gap: 8 }}>
-        <button onClick={() => setFollow(!follow)}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={() => setTrailOn(!trailOn)}>
-          {trailOn ? "Trail On" : "Trail Off"}
+        <button onClick={() => setFollow(true)}>Follow</button>
+        <button onClick={() => {
+          setTrailOn(!trailOn);
+          if (trailOn) {
+            trailCoordsRef.current = [];
+            mapRef.current?.getSource("trail")?.setData({
+              type: "FeatureCollection",
+              features: [],
+            });
+          }
+        }}>
+          {trailOn ? "Trail Off" : "Trail On"}
         </button>
       </div>
 
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)" }}>
-        <button onClick={armLogHouse} style={{ padding: "14px 26px", borderRadius: 999 }}>
-          Log House
-        </button>
+        <button onClick={armLogHouse}>Log House</button>
       </div>
 
-      {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 12, borderRadius: 14, width: 300 }}>
-          {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)} style={{ width: "100%", padding: 12, background: s.color, color: "white", marginBottom: 6 }}>
-              {s.label}
-            </button>
-          ))}
-          <button onClick={cancelLog} style={{ width: "100%", padding: 10 }}>
-            Cancel
-          </button>
-        </div>
-      )}
-
-      {showSeverity && (
-        <div style={{ position: "fixed", bottom: 100, left: "50%", transform: "translateX(-50%)", background: "white", padding: 14, borderRadius: 14, width: 300 }}>
-          <div style={{ color: severityColor(severity) }}>Severity: {severity}</div>
-          <input type="range" min="1" max="10" value={severity} onChange={(e) => setSeverity(+e.target.value)} />
-          <textarea placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 6 }} />
-          <button onClick={saveSeverity}>Save</button>
+      {selectedPin && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 14, borderRadius: 14, width: 320 }}>
+          <strong>{selectedPin.status}</strong>
+          <div>{selectedPin.address}</div>
+          {selectedPin.severity && <div>Severity: {selectedPin.severity}</div>}
+          {selectedPin.notes && <div>Notes: {selectedPin.notes}</div>}
         </div>
       )}
     </div>
