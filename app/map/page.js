@@ -89,6 +89,17 @@ export default function MapPage() {
   const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
 
+  const severityGradient = (value) => {
+    const pct = (value / 10) * 100;
+    return `linear-gradient(
+      to right,
+      #16a34a 0%,
+      #16a34a ${pct}%,
+      #dc2626 ${pct}%,
+      #dc2626 100%
+    )`;
+  };
+
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
     if (mapRef.current) return;
@@ -188,8 +199,6 @@ export default function MapPage() {
           ],
         });
 
-        renderNearbyPins();
-
         if (trailOnRef.current && activeSegmentRef.current) {
           activeSegmentRef.current.geometry.coordinates.push([
             longitude,
@@ -243,44 +252,6 @@ export default function MapPage() {
     });
   };
 
-  /* ---------- CONTROLS ---------- */
-  const toggleFollow = () => {
-    followRef.current = !followRef.current;
-    setFollow(followRef.current);
-  };
-
-  const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
-    trailOnRef.current = !trailOnRef.current;
-    setTrailOn(trailOnRef.current);
-  };
-
-  const armLogHouse = () => {
-    loggingRef.current = true;
-    setLoggingMode(true);
-  };
-
-  const cancelLog = () => {
-    pendingPinRef.current?.remove();
-    pendingPinRef.current = null;
-    loggingRef.current = false;
-    setLoggingMode(false);
-    setShowStatus(false);
-  };
-
   const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
@@ -301,15 +272,12 @@ export default function MapPage() {
       setShowSeverity(true);
     }
 
-    renderNearbyPins();
-
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
   };
 
-  /* ---------- SAVE SEVERITY + NOTES ---------- */
   const saveSeverity = () => {
     if (!lastLogRef.current) return;
 
@@ -330,48 +298,25 @@ export default function MapPage() {
     setShowSeverity(false);
   };
 
-  /* ---------- SEVERITY COLOR ---------- */
-  const severityPercent = (severity / 10) * 100;
-  const severityTrack = `linear-gradient(90deg, 
-    #16a34a 0%, 
-    #facc15 50%, 
-    #dc2626 100%)`;
-
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
+      <style>{`
+        input[type="range"] {
+          -webkit-appearance: none;
+          height: 18px;
+          border-radius: 9999px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 28px;
+          height: 28px;
+          background: white;
+          border-radius: 50%;
+          border: 2px solid #000;
+        }
+      `}</style>
+
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
-
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
-        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
-          Log House
-        </button>
-      </div>
-
-      {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
-          {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
-              {s.label}
-            </button>
-          ))}
-          <button onClick={cancelLog}>Cancel</button>
-        </div>
-      )}
 
       {showSeverity && (
         <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
@@ -385,11 +330,7 @@ export default function MapPage() {
             onChange={(e) => setSeverity(Number(e.target.value))}
             style={{
               width: "100%",
-              appearance: "none",
-              height: 8,
-              borderRadius: 999,
-              background: severityTrack,
-              backgroundSize: `${severityPercent}% 100%`,
+              background: severityGradient(severity),
             }}
           />
 
