@@ -23,12 +23,16 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
-const saveAllPins = (all: any) =>
+const savePinToStorage = (pin) => {
+  const all = loadAllPins();
+  const today = todayKey();
+  all[today] = [...(all[today] || []), pin];
   localStorage.setItem("pins", JSON.stringify(all));
+};
 
 /* ---------- UTILS ---------- */
-const haversine = (a: any, b: any) => {
-  const toRad = (v: number) => (v * Math.PI) / 180;
+const haversine = (a, b) => {
+  const toRad = (v) => (v * Math.PI) / 180;
   const R = 6371000;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
@@ -43,8 +47,9 @@ const haversine = (a: any, b: any) => {
 };
 
 /* ---------- PIN ---------- */
-function createPin(color: string) {
+function createPin(color) {
   const el = document.createElement("div");
+  el.style.padding = "14px";
   el.style.cursor = "pointer";
   el.innerHTML = `
     <svg width="24" height="36" viewBox="0 0 24 36">
@@ -58,17 +63,16 @@ function createPin(color: string) {
 }
 
 export default function MapPage() {
-  const mapRef = useRef<any>(null);
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const watchIdRef = useRef<number | null>(null);
+  const mapRef = useRef(null);
+  const mapContainerRef = useRef(null);
+  const watchIdRef = useRef(null);
 
   const followRef = useRef(true);
   const trailOnRef = useRef(false);
-  const activeSegmentRef = useRef<any>(null);
+  const activeSegmentRef = useRef(null);
   const loggingRef = useRef(false);
-  const pendingPinRef = useRef<any>(null);
-  const renderedPinsRef = useRef<any[]>([]);
-  const userPosRef = useRef<any>(null);
+  const pendingPinRef = useRef(null);
+  const renderedPinsRef = useRef([]);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -78,14 +82,16 @@ export default function MapPage() {
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-  const [activePin, setActivePin] = useState<any>(null);
+  const lastLogRef = useRef(null);
+
+  const userPosRef = useRef(null);
 
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
     if (mapRef.current) return;
 
     const map = new mapboxgl.Map({
-      container: mapContainerRef.current!,
+      container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
       center: [-98.5795, 39.8283],
       zoom: 4,
@@ -135,8 +141,10 @@ export default function MapPage() {
         },
       });
 
-      renderNearbyPins();
+      setTimeout(renderNearbyPins, 300);
     });
+
+    map.on("moveend", renderNearbyPins);
 
     map.on("click", (e) => {
       if (!loggingRef.current) return;
@@ -152,7 +160,11 @@ export default function MapPage() {
       setShowStatus(true);
     });
 
-    return () => map.remove();
+    return () => {
+      if (watchIdRef.current)
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      map.remove();
+    };
   }, []);
 
   /* ---------- GPS ---------- */
@@ -162,27 +174,18 @@ export default function MapPage() {
         const { longitude, latitude } = pos.coords;
         userPosRef.current = { lng: longitude, lat: latitude };
 
-        mapRef.current
-          ?.getSource("user-location")
-          ?.setData({
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                geometry: {
-                  type: "Point",
-                  coordinates: [longitude, latitude],
-                },
-              },
-            ],
-          });
+        mapRef.current?.getSource("user-location")?.setData({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [longitude, latitude] },
+              properties: {},
+            },
+          ],
+        });
 
-        if (followRef.current) {
-          mapRef.current.easeTo({
-            center: [longitude, latitude],
-            zoom: 18,
-          });
-        }
+        renderNearbyPins();
 
         if (trailOnRef.current && activeSegmentRef.current) {
           activeSegmentRef.current.geometry.coordinates.push([
@@ -194,42 +197,43 @@ export default function MapPage() {
           );
         }
 
-        renderNearbyPins();
+        if (followRef.current) {
+          mapRef.current.easeTo({
+            center: [longitude, latitude],
+            zoom: 18,
+          });
+        }
       },
       () => {},
       { enableHighAccuracy: true }
     );
   }, []);
 
-  /* ---------- PIN RENDER ---------- */
+  /* ---------- PIN RENDERING ---------- */
   const renderNearbyPins = () => {
     renderedPinsRef.current.forEach((m) => m.remove());
     renderedPinsRef.current = [];
 
-    if (!userPosRef.current) return;
+    if (!userPosRef.current || !mapRef.current) return;
 
     const bounds = mapRef.current.getBounds();
     const all = loadAllPins()[todayKey()] || [];
 
-    all.forEach((p: any) => {
+    all.forEach((p) => {
       const dist = haversine(userPosRef.current, {
         lng: p.lngLat.lng,
         lat: p.lngLat.lat,
       });
 
-      if (dist <= RADIUS_METERS && bounds.contains(p.lngLat)) {
+      if (
+        dist <= RADIUS_METERS &&
+        bounds.contains([p.lngLat.lng, p.lngLat.lat])
+      ) {
         const marker = new mapboxgl.Marker({
           element: createPin(p.color),
         })
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
-
-        marker.getElement().onclick = () => {
-          setActivePin(p);
-          setSeverity(p.severity ?? 5);
-          setNotes(p.notes ?? "");
-          setShowSeverity(true);
-        };
 
         renderedPinsRef.current.push(marker);
       }
@@ -266,102 +270,120 @@ export default function MapPage() {
     setLoggingMode(true);
   };
 
-  const savePin = (status: any) => {
+  const cancelLog = () => {
+    pendingPinRef.current?.remove();
+    pendingPinRef.current = null;
+    loggingRef.current = false;
+    setLoggingMode(false);
+    setShowStatus(false);
+  };
+
+  const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const all = loadAllPins();
-    const today = todayKey();
-
-    const pin = {
+    const log = {
       lngLat,
       color: status.color,
       status: status.label,
       time: Date.now(),
     };
 
-    all[today] = [...(all[today] || []), pin];
-    saveAllPins(all);
+    savePinToStorage(log);
+    lastLogRef.current = log;
 
     if (status.label === "No Answer") {
-      setActivePin(pin);
       setShowSeverity(true);
     }
 
+    renderNearbyPins();
+
+    pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
-
-    renderNearbyPins();
   };
 
   const saveSeverity = () => {
-    const all = loadAllPins();
-    const today = todayKey();
-
-    all[today] = all[today].map((p: any) =>
-      p.time === activePin.time
-        ? { ...p, severity, notes }
-        : p
-    );
-
-    saveAllPins(all);
-
+    lastLogRef.current.severity = severity;
+    lastLogRef.current.notes = notes || null;
+    setSeverity(5);
+    setNotes("");
     setShowSeverity(false);
-    setActivePin(null);
   };
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
+      <style>{`
+        .severity-slider {
+          -webkit-appearance: none;
+          width: 100%;
+          height: 18px;
+          border-radius: 9999px;
+        }
+
+        .severity-slider::-webkit-slider-runnable-track {
+          height: 18px;
+          border-radius: 9999px;
+          background: linear-gradient(
+            to right,
+            #16a34a 0%,
+            #16a34a 30%,
+            #facc15 50%,
+            #f97316 70%,
+            #dc2626 100%
+          );
+        }
+
+        .severity-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 28px;
+          width: 28px;
+          background: white;
+          border-radius: 50%;
+          border: 2px solid #111;
+          margin-top: -5px;
+        }
+      `}</style>
+
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/">← Home</Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)" }}>
-        <button onClick={armLogHouse}>Log House</button>
-      </div>
-
-      {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)" }}>
-          {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20 }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "white",
+            padding: 22,
+            borderRadius: 18,
+            width: 320,
+            zIndex: 200,
+          }}
+        >
+          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+
           <input
             type="range"
             min={0}
             max={10}
             value={severity}
             onChange={(e) => setSeverity(Number(e.target.value))}
-            style={{
-              width: "100%",
-              background: `linear-gradient(to right,#16a34a,#facc15,#f97316,#dc2626)`,
-            }}
+            className="severity-slider"
           />
+
           <textarea
-            placeholder="Notes"
+            placeholder="Notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            style={{ width: "100%", marginTop: 10 }}
+            style={{ width: "100%", height: 80, marginTop: 10 }}
           />
-          <button onClick={saveSeverity}>Save</button>
+
+          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+            <button onClick={saveSeverity}>Save</button>
+            <button onClick={() => setShowSeverity(false)}>Skip</button>
+          </div>
         </div>
       )}
     </div>
