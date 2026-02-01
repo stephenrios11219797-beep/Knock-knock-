@@ -23,11 +23,14 @@ const todayKey = () => new Date().toISOString().slice(0, 10);
 const loadAllPins = () =>
   JSON.parse(localStorage.getItem("pins") || "{}");
 
+const saveAllPins = (data) =>
+  localStorage.setItem("pins", JSON.stringify(data));
+
 const savePinToStorage = (pin) => {
   const all = loadAllPins();
   const today = todayKey();
   all[today] = [...(all[today] || []), pin];
-  localStorage.setItem("pins", JSON.stringify(all));
+  saveAllPins(all);
 };
 
 /* ---------- UTILS ---------- */
@@ -82,8 +85,8 @@ export default function MapPage() {
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
-  const lastLogRef = useRef(null);
 
+  const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
 
   /* ---------- MAP INIT ---------- */
@@ -287,6 +290,8 @@ export default function MapPage() {
       color: status.color,
       status: status.label,
       time: Date.now(),
+      severity: null,
+      notes: null,
     };
 
     savePinToStorage(log);
@@ -304,64 +309,72 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
+  /* ---------- SAVE SEVERITY + NOTES ---------- */
   const saveSeverity = () => {
+    if (!lastLogRef.current) return;
+
     lastLogRef.current.severity = severity;
     lastLogRef.current.notes = notes || null;
+
+    const all = loadAllPins();
+    const today = todayKey();
+
+    all[today] = all[today].map((p) =>
+      p.time === lastLogRef.current.time ? lastLogRef.current : p
+    );
+
+    saveAllPins(all);
+
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
   };
 
+  /* ---------- SEVERITY COLOR ---------- */
+  const severityPercent = (severity / 10) * 100;
+  const severityTrack = `linear-gradient(90deg, 
+    #16a34a 0%, 
+    #facc15 50%, 
+    #dc2626 100%)`;
+
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
-      <style>{`
-        .severity-slider {
-          -webkit-appearance: none;
-          width: 100%;
-          height: 18px;
-          border-radius: 9999px;
-        }
-
-        .severity-slider::-webkit-slider-runnable-track {
-          height: 18px;
-          border-radius: 9999px;
-          background: linear-gradient(
-            to right,
-            #16a34a 0%,
-            #16a34a 30%,
-            #facc15 50%,
-            #f97316 70%,
-            #dc2626 100%
-          );
-        }
-
-        .severity-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          height: 28px;
-          width: 28px;
-          background: white;
-          border-radius: 50%;
-          border: 2px solid #111;
-          margin-top: -5px;
-        }
-      `}</style>
-
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
+      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
+        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
+          ← Home
+        </Link>
+      </div>
+
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+        <button onClick={toggleFollow}>
+          {follow ? "Following" : "Free Look"}
+        </button>
+        <button onClick={toggleTrail}>
+          {trailOn ? "Trail On" : "Trail Off"}
+        </button>
+      </div>
+
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
+        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
+          Log House
+        </button>
+      </div>
+
+      {showStatus && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
+          {STATUS_OPTIONS.map((s) => (
+            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
+              {s.label}
+            </button>
+          ))}
+          <button onClick={cancelLog}>Cancel</button>
+        </div>
+      )}
+
       {showSeverity && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 130,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "white",
-            padding: 22,
-            borderRadius: 18,
-            width: 320,
-            zIndex: 200,
-          }}
-        >
+        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
           <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
 
           <input
@@ -370,7 +383,14 @@ export default function MapPage() {
             max={10}
             value={severity}
             onChange={(e) => setSeverity(Number(e.target.value))}
-            className="severity-slider"
+            style={{
+              width: "100%",
+              appearance: "none",
+              height: 8,
+              borderRadius: 999,
+              background: severityTrack,
+              backgroundSize: `${severityPercent}% 100%`,
+            }}
           />
 
           <textarea
