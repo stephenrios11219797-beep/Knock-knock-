@@ -65,6 +65,19 @@ function createPin(color) {
   return el;
 }
 
+// ---------- NEW: FETCH ADDRESS ----------
+const fetchAddress = async ({ lng, lat }) => {
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${mapboxgl.accessToken}`
+    );
+    const data = await res.json();
+    return data.features[0]?.place_name || "Unknown address";
+  } catch {
+    return "Unknown address";
+  }
+};
+
 export default function MapPage() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
@@ -228,15 +241,24 @@ export default function MapPage() {
         lat: p.lngLat.lat,
       });
 
-      if (
-        dist <= RADIUS_METERS &&
-        bounds.contains([p.lngLat.lng, p.lngLat.lat])
-      ) {
-        const marker = new mapboxgl.Marker({
-          element: createPin(p.color),
-        })
+      if (dist <= RADIUS_METERS && bounds.contains([p.lngLat.lng, p.lngLat.lat])) {
+        const markerEl = createPin(p.color);
+
+        const marker = new mapboxgl.Marker({ element: markerEl })
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
+
+        // ---------- NEW: SHOW POPUP ON CLICK ----------
+        const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
+          <strong>Status:</strong> ${p.status}<br/>
+          <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
+          <strong>Notes:</strong> ${p.notes ?? "None"}<br/>
+          <strong>Address:</strong> ${p.address ?? "Unknown"}
+        `);
+
+        marker.getElement().addEventListener("click", () => {
+          popup.setLngLat(p.lngLat).addTo(mapRef.current);
+        });
 
         renderedPinsRef.current.push(marker);
       }
@@ -281,9 +303,12 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
-  const savePin = (status) => {
+  /* ---------- SAVE PIN WITH ADDRESS ---------- */
+  const savePin = async (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
+
+    const address = await fetchAddress(lngLat); // NEW
 
     const log = {
       lngLat,
@@ -292,6 +317,7 @@ export default function MapPage() {
       time: Date.now(),
       severity: null,
       notes: null,
+      address, // NEW
     };
 
     savePinToStorage(log);
