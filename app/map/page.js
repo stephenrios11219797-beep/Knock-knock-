@@ -101,6 +101,7 @@ export default function MapPage() {
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
   const [editPinRef, setEditPinRef] = useState(null); // pin being edited
+  const [selectedStatus, setSelectedStatus] = useState(null); // selected status during edit
 
   const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
@@ -172,6 +173,7 @@ export default function MapPage() {
         openPopupRef.current = null;
         openPopupPinTimeRef.current = null;
         setEditPinRef(null);
+        setSelectedStatus(null);
       }
     });
 
@@ -269,7 +271,6 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // Persistent popup with Edit button
         const popup = new mapboxgl.Popup({
           offset: 25,
           closeOnClick: false,
@@ -293,7 +294,8 @@ export default function MapPage() {
             const editBtn = document.getElementById("edit-pin-btn");
             if (editBtn) {
               editBtn.onclick = () => {
-                setEditPinRef(p); // pin we are editing
+                setEditPinRef(p);
+                setSelectedStatus(STATUS_OPTIONS.find(s => s.label === p.status));
                 setSeverity(p.severity ?? 5);
                 setNotes(p.notes ?? "");
                 setShowSeverity(true);
@@ -366,9 +368,7 @@ export default function MapPage() {
     savePinToStorage(log);
     lastLogRef.current = log;
 
-    if (status.label === "No Answer") {
-      setShowSeverity(true);
-    }
+    if (status.label === "No Answer") setShowSeverity(true);
 
     renderNearbyPins();
 
@@ -378,53 +378,30 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
-  /* ---------- SAVE SEVERITY + NOTES ---------- */
+  /* ---------- SAVE SEVERITY + NOTES + STATUS ---------- */
   const saveSeverity = () => {
-    if (!lastLogRef.current && !editPinRef) return;
-
     const pinToUpdate = editPinRef || lastLogRef.current;
+    if (!pinToUpdate) return;
 
     pinToUpdate.severity = severity;
-    pinToUpdate.notes = notes || null;
+    pinToUpdate.notes = notes || "";
+    if (selectedStatus) pinToUpdate.status = selectedStatus.label;
+    pinToUpdate.color = selectedStatus?.color || pinToUpdate.color;
 
     const all = loadAllPins();
     const today = todayKey();
-
     all[today] = all[today].map((p) =>
       p.time === pinToUpdate.time ? pinToUpdate : p
     );
-
     saveAllPins(all);
 
-    // Update open popup if it matches
-    if (openPopupPinTimeRef.current === pinToUpdate.time && openPopupRef.current) {
-      openPopupRef.current.setHTML(`
-        <strong>Status:</strong> ${pinToUpdate.status}<br/>
-        <strong>Severity:</strong> ${pinToUpdate.severity ?? "N/A"}<br/>
-        <strong>Notes:</strong> ${pinToUpdate.notes ?? "None"}<br/>
-        <strong>Address:</strong> ${pinToUpdate.address ?? "Unknown"}<br/>
-        <button id="edit-pin-btn">Edit</button>
-      `);
-
-      setTimeout(() => {
-        const editBtn = document.getElementById("edit-pin-btn");
-        if (editBtn) {
-          editBtn.onclick = () => {
-            setEditPinRef(pinToUpdate);
-            setSeverity(pinToUpdate.severity ?? 5);
-            setNotes(pinToUpdate.notes ?? "");
-            setShowSeverity(true);
-            openPopupRef.current.remove();
-          };
-        }
-      }, 0);
-    }
+    renderNearbyPins();
 
     setSeverity(5);
     setNotes("");
-    setShowSeverity(false);
+    setSelectedStatus(null);
     setEditPinRef(null);
-    window.scrollTo(0, 0);
+    setShowSeverity(false);
   };
 
   const severityPercent = (severity / 10) * 100;
@@ -467,7 +444,23 @@ export default function MapPage() {
 
       {showSeverity && (
         <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200, maxWidth: "90vw" }}>
-          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+          <div style={{ marginBottom: 10 }}>Edit Pin</div>
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {STATUS_OPTIONS.map((s) => (
+              <button key={s.label} onClick={() => setSelectedStatus(s)}
+                style={{
+                  background: s.color,
+                  color: "white",
+                  padding: "6px 10px",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  border: selectedStatus?.label === s.label ? "2px solid black" : "none"
+                }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
 
           <input
             type="range"
@@ -502,7 +495,7 @@ export default function MapPage() {
 
           <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
-            <button onClick={() => { setShowSeverity(false); setEditPinRef(null); }}>Cancel</button>
+            <button onClick={() => { setShowSeverity(false); setEditPinRef(null); setSelectedStatus(null); }}>Cancel</button>
           </div>
         </div>
       )}
