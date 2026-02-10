@@ -90,6 +90,7 @@ export default function MapPage() {
   const pendingPinRef = useRef(null);
   const renderedPinsRef = useRef([]);
   const openPopupRef = useRef(null);
+  const openPopupPinTimeRef = useRef(null);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -99,6 +100,7 @@ export default function MapPage() {
   const [showSeverity, setShowSeverity] = useState(false);
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState("");
+  const [editPinRef, setEditPinRef] = useState(null); // pin being edited
 
   const lastLogRef = useRef(null);
   const userPosRef = useRef(null);
@@ -168,6 +170,8 @@ export default function MapPage() {
       if (openPopupRef.current) {
         openPopupRef.current.remove();
         openPopupRef.current = null;
+        openPopupPinTimeRef.current = null;
+        setEditPinRef(null);
       }
     });
 
@@ -265,7 +269,7 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // Persistent popup
+        // Persistent popup with Edit button
         const popup = new mapboxgl.Popup({
           offset: 25,
           closeOnClick: false,
@@ -273,16 +277,30 @@ export default function MapPage() {
           <strong>Status:</strong> ${p.status}<br/>
           <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
           <strong>Notes:</strong> ${p.notes ?? "None"}<br/>
-          <strong>Address:</strong> ${p.address ?? "Unknown"}
+          <strong>Address:</strong> ${p.address ?? "Unknown"}<br/>
+          <button id="edit-pin-btn">Edit</button>
         `);
 
         marker.getElement().addEventListener("click", (e) => {
           e.stopPropagation();
-          if (openPopupRef.current) {
-            openPopupRef.current.remove();
-          }
+          if (openPopupRef.current) openPopupRef.current.remove();
+
           popup.setLngLat([p.lngLat.lng, p.lngLat.lat]).addTo(mapRef.current);
           openPopupRef.current = popup;
+          openPopupPinTimeRef.current = p.time;
+
+          setTimeout(() => {
+            const editBtn = document.getElementById("edit-pin-btn");
+            if (editBtn) {
+              editBtn.onclick = () => {
+                setEditPinRef(p); // pin we are editing
+                setSeverity(p.severity ?? 5);
+                setNotes(p.notes ?? "");
+                setShowSeverity(true);
+                openPopupRef.current.remove();
+              };
+            }
+          }, 0);
         });
 
         renderedPinsRef.current.push(marker);
@@ -362,27 +380,53 @@ export default function MapPage() {
 
   /* ---------- SAVE SEVERITY + NOTES ---------- */
   const saveSeverity = () => {
-    if (!lastLogRef.current) return;
+    if (!lastLogRef.current && !editPinRef) return;
 
-    lastLogRef.current.severity = severity;
-    lastLogRef.current.notes = notes || null;
+    const pinToUpdate = editPinRef || lastLogRef.current;
+
+    pinToUpdate.severity = severity;
+    pinToUpdate.notes = notes || null;
 
     const all = loadAllPins();
     const today = todayKey();
 
     all[today] = all[today].map((p) =>
-      p.time === lastLogRef.current.time ? lastLogRef.current : p
+      p.time === pinToUpdate.time ? pinToUpdate : p
     );
 
     saveAllPins(all);
 
+    // Update open popup if it matches
+    if (openPopupPinTimeRef.current === pinToUpdate.time && openPopupRef.current) {
+      openPopupRef.current.setHTML(`
+        <strong>Status:</strong> ${pinToUpdate.status}<br/>
+        <strong>Severity:</strong> ${pinToUpdate.severity ?? "N/A"}<br/>
+        <strong>Notes:</strong> ${pinToUpdate.notes ?? "None"}<br/>
+        <strong>Address:</strong> ${pinToUpdate.address ?? "Unknown"}<br/>
+        <button id="edit-pin-btn">Edit</button>
+      `);
+
+      setTimeout(() => {
+        const editBtn = document.getElementById("edit-pin-btn");
+        if (editBtn) {
+          editBtn.onclick = () => {
+            setEditPinRef(pinToUpdate);
+            setSeverity(pinToUpdate.severity ?? 5);
+            setNotes(pinToUpdate.notes ?? "");
+            setShowSeverity(true);
+            openPopupRef.current.remove();
+          };
+        }
+      }, 0);
+    }
+
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
+    setEditPinRef(null);
     window.scrollTo(0, 0);
   };
 
-  /* ---------- SEVERITY COLOR ---------- */
   const severityPercent = (severity / 10) * 100;
 
   return (
@@ -458,7 +502,7 @@ export default function MapPage() {
 
           <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
             <button onClick={saveSeverity}>Save</button>
-            <button onClick={() => setShowSeverity(false)}>Skip</button>
+            <button onClick={() => { setShowSeverity(false); setEditPinRef(null); }}>Cancel</button>
           </div>
         </div>
       )}
