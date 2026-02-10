@@ -258,15 +258,19 @@ export default function MapPage() {
       renderNearbyPins();
     });
 
-    if (status.label === "No Answer") setShowSeverity(true);
-    if (status.label === "Soft Set") setShowSoftSetForm(true);
+    // <<< FIX: Soft Set now properly triggers the form >>>
+    if (status.label === "Soft Set") {
+      setShowSoftSetForm(true);
+    } else if (status.label === "No Answer") {
+      setShowSeverity(true);
+    }
 
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
 
-    renderNearbyPins();
+    renderNearbyPins(); // immediate UI update
   };
 
   /* ---------- EDIT PIN ---------- */
