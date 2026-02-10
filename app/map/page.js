@@ -65,7 +65,7 @@ function createPin(color) {
   return el;
 }
 
-// ---------- NEW: FETCH ADDRESS ----------
+/* ---------- FETCH ADDRESS ---------- */
 const fetchAddress = async ({ lng, lat }) => {
   try {
     const res = await fetch(
@@ -89,6 +89,7 @@ export default function MapPage() {
   const loggingRef = useRef(false);
   const pendingPinRef = useRef(null);
   const renderedPinsRef = useRef([]);
+  const openPopupRef = useRef(null);
 
   const [follow, setFollow] = useState(true);
   const [trailOn, setTrailOn] = useState(false);
@@ -248,7 +249,7 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // ---------- NEW: SHOW POPUP ON CLICK ----------
+        // ---------- POPUP FIX ----------
         const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
           <strong>Status:</strong> ${p.status}<br/>
           <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
@@ -256,9 +257,7 @@ export default function MapPage() {
           <strong>Address:</strong> ${p.address ?? "Unknown"}
         `);
 
-        marker.getElement().addEventListener("click", () => {
-          popup.setLngLat(p.lngLat).addTo(mapRef.current);
-        });
+        marker.setPopup(popup);
 
         renderedPinsRef.current.push(marker);
       }
@@ -308,7 +307,7 @@ export default function MapPage() {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
 
-    const address = await fetchAddress(lngLat); // NEW
+    const address = await fetchAddress(lngLat);
 
     const log = {
       lngLat,
@@ -317,7 +316,7 @@ export default function MapPage() {
       time: Date.now(),
       severity: null,
       notes: null,
-      address, // NEW
+      address,
     };
 
     savePinToStorage(log);
@@ -354,18 +353,12 @@ export default function MapPage() {
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
+    // ---------- MODAL FIX: scroll back to top ----------
+    window.scrollTo(0, 0);
   };
 
-  /* ---------- SEVERITY COLOR (FIXED) ---------- */
+  /* ---------- SEVERITY COLOR ---------- */
   const severityPercent = (severity / 10) * 100;
-  const severityGradient = `
-    linear-gradient(
-      90deg,
-      #16a34a 0%,
-      #facc15 50%,
-      #dc2626 100%
-    )
-  `;
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
@@ -404,7 +397,7 @@ export default function MapPage() {
       )}
 
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
+        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200, maxWidth: "90vw" }}>
           <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
 
           <input
@@ -418,6 +411,7 @@ export default function MapPage() {
               appearance: "none",
               height: 8,
               borderRadius: 999,
+              touchAction: "none",
               background: `
                 linear-gradient(
                   90deg,
