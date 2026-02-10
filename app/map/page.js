@@ -242,20 +242,31 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
+  /* ---------- SEVERITY SLIDER FIX ---------- */
   const severityPercent = (severity / 10) * 100;
+  const severityTrack = `
+    linear-gradient(
+      90deg,
+      #16a34a 0%,
+      #16a34a ${severityPercent}%,
+      #facc15 ${severityPercent}%,
+      #facc15 ${Math.min(severityPercent + 1, 100)}%,
+      #dc2626 ${Math.min(severityPercent + 1, 100)}%,
+      #e5e7eb ${Math.min(severityPercent + 1, 100)}%,
+      #e5e7eb 100%
+    )
+  `;
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
-      {/* Home */}
       <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
         <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
           ← Home
         </Link>
       </div>
 
-      {/* Follow / Trail */}
       <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
         <button onClick={toggleFollow}>
           {follow ? "Following" : "Free Look"}
@@ -265,14 +276,10 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* Log House */}
       <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
-        <button onClick={armLogHouse}>
-          Log House
-        </button>
+        <button onClick={armLogHouse}>Log House</button>
       </div>
 
-      {/* Status Menu */}
       {showStatus && (
         <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, zIndex: 100 }}>
           {STATUS_OPTIONS.map((s) => (
@@ -284,7 +291,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Severity */}
       {showSeverity && (
         <div style={{ position: "fixed", bottom: 140, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20, borderRadius: 16, width: 320, zIndex: 200 }}>
           <div>Roof Damage Severity</div>
@@ -300,11 +306,7 @@ export default function MapPage() {
               appearance: "none",
               height: 8,
               borderRadius: 999,
-              backgroundImage:
-                "linear-gradient(90deg, #16a34a, #facc15, #dc2626)",
-              backgroundSize: `${severityPercent}% 100%`,
-              backgroundRepeat: "no-repeat",
-              backgroundColor: "#e5e7eb",
+              background: severityTrack,
             }}
           />
 
