@@ -171,6 +171,14 @@ export default function MapPage() {
       }
     });
 
+    // Turn off follow mode when user drags/swipes the map
+    map.on("dragstart", () => {
+      if (followRef.current) {
+        followRef.current = false;
+        setFollow(false);
+      }
+    });
+
     map.on("click", (e) => {
       if (!loggingRef.current) return;
 
