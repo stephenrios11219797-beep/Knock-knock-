@@ -164,6 +164,12 @@ export default function MapPage() {
     map.on("moveend", renderNearbyPins);
 
     map.on("click", (e) => {
+      // ---------- Close popup if clicking empty map ----------
+      if (openPopupRef.current) {
+        openPopupRef.current.remove();
+        openPopupRef.current = null;
+      }
+
       if (!loggingRef.current) return;
 
       pendingPinRef.current?.remove();
@@ -249,8 +255,8 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // ---------- POPUP FIX ----------
-        const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
+        // ---------- Persistent Popup ----------
+        const popup = new mapboxgl.Popup({ offset: 25, closeOnClick: false }).setHTML(`
           <strong>Status:</strong> ${p.status}<br/>
           <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
           <strong>Notes:</strong> ${p.notes ?? "None"}<br/>
@@ -258,6 +264,16 @@ export default function MapPage() {
         `);
 
         marker.setPopup(popup);
+
+        // Open popup on click and close others
+        marker.getElement().addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (openPopupRef.current) {
+            openPopupRef.current.remove();
+          }
+          popup.addTo(mapRef.current);
+          openPopupRef.current = popup;
+        });
 
         renderedPinsRef.current.push(marker);
       }
@@ -353,7 +369,6 @@ export default function MapPage() {
     setSeverity(5);
     setNotes("");
     setShowSeverity(false);
-    // ---------- MODAL FIX: scroll back to top ----------
     window.scrollTo(0, 0);
   };
 
