@@ -164,7 +164,7 @@ export default function MapPage() {
     map.on("moveend", renderNearbyPins);
 
     map.on("click", (e) => {
-      // ---------- Close popup if clicking empty map ----------
+      // Close popup if clicking empty map
       if (openPopupRef.current) {
         openPopupRef.current.remove();
         openPopupRef.current = null;
@@ -255,7 +255,7 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // ---------- Persistent Popup ----------
+        // Persistent Popup
         const popup = new mapboxgl.Popup({ offset: 25, closeOnClick: false }).setHTML(`
           <strong>Status:</strong> ${p.status}<br/>
           <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
@@ -265,7 +265,6 @@ export default function MapPage() {
 
         marker.setPopup(popup);
 
-        // Open popup on click and close others
         marker.getElement().addEventListener("click", (e) => {
           e.stopPropagation();
           if (openPopupRef.current) {
@@ -424,8 +423,9 @@ export default function MapPage() {
             style={{
               width: "100%",
               appearance: "none",
-              height: 8,
+              height: 16,
               borderRadius: 999,
+              fontSize: 16,
               touchAction: "none",
               background: `
                 linear-gradient(
@@ -442,7 +442,7 @@ export default function MapPage() {
             placeholder="Notes (optional)"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            style={{ width: "100%", height: 80, marginTop: 10 }}
+            style={{ width: "100%", height: 80, marginTop: 10, fontSize: 16 }}
           />
 
           <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
