@@ -237,7 +237,6 @@ export default function MapPage() {
   /* ---------- SAVE PIN ---------- */
   const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
-    pendingPinRef.current.remove();
 
     const log = {
       lngLat,
@@ -252,25 +251,26 @@ export default function MapPage() {
     savePinToStorage(log);
     lastLogRef.current = log;
 
-    fetchAddress(lngLat).then((addr) => {
-      log.address = addr;
-      saveAllPins(loadAllPins());
-      renderNearbyPins();
-    });
-
-    // <<< FIX: Soft Set now properly triggers the form >>>
+    // <<< FIX: Soft Set form now reliably opens BEFORE removing the pin >>>
     if (status.label === "Soft Set") {
       setShowSoftSetForm(true);
     } else if (status.label === "No Answer") {
       setShowSeverity(true);
     }
 
+    fetchAddress(lngLat).then((addr) => {
+      log.address = addr;
+      saveAllPins(loadAllPins());
+      renderNearbyPins();
+    });
+
+    pendingPinRef.current.remove();
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
 
-    renderNearbyPins(); // immediate UI update
+    renderNearbyPins();
   };
 
   /* ---------- EDIT PIN ---------- */
