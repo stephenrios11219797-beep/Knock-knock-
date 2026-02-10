@@ -163,13 +163,15 @@ export default function MapPage() {
 
     map.on("moveend", renderNearbyPins);
 
-    map.on("click", (e) => {
-      // Close popup if clicking empty map
+    // Clicking empty map closes popup
+    map.on("click", () => {
       if (openPopupRef.current) {
         openPopupRef.current.remove();
         openPopupRef.current = null;
       }
+    });
 
+    map.on("click", (e) => {
       if (!loggingRef.current) return;
 
       pendingPinRef.current?.remove();
@@ -255,22 +257,23 @@ export default function MapPage() {
           .setLngLat(p.lngLat)
           .addTo(mapRef.current);
 
-        // Persistent Popup
-        const popup = new mapboxgl.Popup({ offset: 25, closeOnClick: false }).setHTML(`
+        // Persistent popup
+        const popup = new mapboxgl.Popup({
+          offset: 25,
+          closeOnClick: false,
+        }).setHTML(`
           <strong>Status:</strong> ${p.status}<br/>
           <strong>Severity:</strong> ${p.severity ?? "N/A"}<br/>
           <strong>Notes:</strong> ${p.notes ?? "None"}<br/>
           <strong>Address:</strong> ${p.address ?? "Unknown"}
         `);
 
-        marker.setPopup(popup);
-
         marker.getElement().addEventListener("click", (e) => {
           e.stopPropagation();
           if (openPopupRef.current) {
             openPopupRef.current.remove();
           }
-          popup.addTo(mapRef.current);
+          popup.setLngLat([p.lngLat.lng, p.lngLat.lat]).addTo(mapRef.current);
           openPopupRef.current = popup;
         });
 
