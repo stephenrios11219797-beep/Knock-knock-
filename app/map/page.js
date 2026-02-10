@@ -330,52 +330,11 @@ export default function MapPage() {
     setShowSeverity(false);
   };
 
-  /* ---------- SEVERITY COLOR (FIXED) ---------- */
   const severityPercent = (severity / 10) * 100;
-  const severityGradient = `
-    linear-gradient(
-      90deg,
-      #16a34a 0%,
-      #facc15 50%,
-      #dc2626 100%
-    )
-  `;
 
   return (
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
-
-      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
-        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
-          ← Home
-        </Link>
-      </div>
-
-      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
-        <button onClick={toggleFollow}>
-          {follow ? "Following" : "Free Look"}
-        </button>
-        <button onClick={toggleTrail}>
-          {trailOn ? "Trail On" : "Trail Off"}
-        </button>
-      </div>
-
-      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
-        <button onClick={armLogHouse} style={{ background: loggingMode ? "#16a34a" : "white", borderRadius: 999, padding: "12px 18px" }}>
-          Log House
-        </button>
-      </div>
-
-      {showStatus && (
-        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, display: "flex", gap: 6, flexWrap: "wrap", zIndex: 100 }}>
-          {STATUS_OPTIONS.map((s) => (
-            <button key={s.label} onClick={() => savePin(s)} style={{ background: s.color, color: "white", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
-              {s.label}
-            </button>
-          ))}
-          <button onClick={cancelLog}>Cancel</button>
-        </div>
-      )}
 
       {showSeverity && (
         <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
@@ -392,16 +351,11 @@ export default function MapPage() {
               appearance: "none",
               height: 8,
               borderRadius: 999,
-              background: `
-                linear-gradient(
-                  90deg,
-                  #16a34a 0%,
-                  #facc15 ${severityPercent / 2}%,
-                  #dc2626 ${severityPercent}%,
-                  #e5e7eb ${severityPercent}%,
-                  #e5e7eb 100%
-                )
-              `,
+              backgroundImage:
+                "linear-gradient(90deg, #16a34a, #facc15, #dc2626)",
+              backgroundSize: `${severityPercent}% 100%`,
+              backgroundRepeat: "no-repeat",
+              backgroundColor: "#e5e7eb",
             }}
           />
 
@@ -411,11 +365,6 @@ export default function MapPage() {
             onChange={(e) => setNotes(e.target.value)}
             style={{ width: "100%", height: 80, marginTop: 10 }}
           />
-
-          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-            <button onClick={saveSeverity}>Save</button>
-            <button onClick={() => setShowSeverity(false)}>Skip</button>
-          </div>
         </div>
       )}
     </div>
