@@ -236,6 +236,8 @@ export default function MapPage() {
 
   /* ---------- SAVE PIN ---------- */
   const savePin = (status) => {
+    if (!pendingPinRef.current) return;
+
     const lngLat = pendingPinRef.current.getLngLat();
 
     const log = {
@@ -251,7 +253,7 @@ export default function MapPage() {
     savePinToStorage(log);
     lastLogRef.current = log;
 
-    // <<< FIX: Soft Set form now reliably opens BEFORE removing the pin >>>
+    // <<< FIX: Soft Set opens BEFORE removing pending pin >>>
     if (status.label === "Soft Set") {
       setShowSoftSetForm(true);
     } else if (status.label === "No Answer") {
