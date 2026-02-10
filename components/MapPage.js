@@ -40,6 +40,10 @@ export default function MapPage() {
   const [notes, setNotes] = useState("");
   const [selectedStatus, setSelectedStatus] = useState(null);
 
+  const [showSoftSetForm, setShowSoftSetForm] = useState(false);
+  const [softSetDate, setSoftSetDate] = useState("");
+  const [softSetNotes, setSoftSetNotes] = useState("");
+
   /* ---------- MAP INIT ---------- */
   useEffect(() => {
     if (mapRef.current) return;
@@ -248,7 +252,6 @@ export default function MapPage() {
     savePinToStorage(log);
     lastLogRef.current = log;
 
-    // Async fetch address with caching
     fetchAddress(lngLat).then((addr) => {
       log.address = addr;
       saveAllPins(loadAllPins());
@@ -256,13 +259,14 @@ export default function MapPage() {
     });
 
     if (status.label === "No Answer") setShowSeverity(true);
+    if (status.label === "Soft Set") setShowSoftSetForm(true);
 
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
 
-    renderNearbyPins(); // immediate UI update
+    renderNearbyPins();
   };
 
   /* ---------- EDIT PIN ---------- */
@@ -296,6 +300,21 @@ export default function MapPage() {
     setSelectedStatus(null);
     setShowSeverity(false);
 
+    renderNearbyPins();
+  };
+
+  /* ---------- SAVE SOFT SET ---------- */
+  const saveSoftSet = () => {
+    if (!lastLogRef.current) return;
+
+    lastLogRef.current.softSetDate = softSetDate || null;
+    lastLogRef.current.notes = softSetNotes || null;
+
+    saveAllPins(loadAllPins());
+
+    setSoftSetDate("");
+    setSoftSetNotes("");
+    setShowSoftSetForm(false);
     renderNearbyPins();
   };
 
@@ -343,6 +362,49 @@ export default function MapPage() {
         onSave={saveSeverity}
         onCancel={() => setShowSeverity(false)}
       />
+
+      {/* ---------- Soft Set Form ---------- */}
+      {showSoftSetForm && (
+        <div style={{
+          position: "fixed",
+          bottom: 130,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          padding: 22,
+          borderRadius: 18,
+          width: 320,
+          zIndex: 200
+        }}>
+          <div style={{ marginBottom: 10 }}>Schedule Roof Inspection</div>
+
+          <label>
+            Date:
+            <input
+              type="date"
+              value={softSetDate}
+              onChange={(e) => setSoftSetDate(e.target.value)}
+              style={{ width: "100%", marginBottom: 10 }}
+            />
+          </label>
+
+          <textarea
+            placeholder="Notes (optional)"
+            value={softSetNotes}
+            onChange={(e) => setSoftSetNotes(e.target.value)}
+            style={{ width: "100%", height: 80, marginBottom: 10 }}
+          />
+
+          <div style={{ display: "flex", gap: 12 }}>
+            <button onClick={saveSoftSet}>Save</button>
+            <button onClick={() => {
+              setSoftSetDate("");
+              setSoftSetNotes("");
+              setShowSoftSetForm(false);
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
