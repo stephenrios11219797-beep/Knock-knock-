@@ -143,11 +143,7 @@ export default function MapPage() {
           "line-width": 3,
         },
       });
-
-      setTimeout(renderNearbyPins, 300);
     });
-
-    map.on("moveend", renderNearbyPins);
 
     map.on("click", (e) => {
       if (!loggingRef.current) return;
@@ -163,11 +159,7 @@ export default function MapPage() {
       setShowStatus(true);
     });
 
-    return () => {
-      if (watchIdRef.current)
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      map.remove();
-    };
+    return () => map.remove();
   }, []);
 
   /* ---------- GPS ---------- */
@@ -188,18 +180,6 @@ export default function MapPage() {
           ],
         });
 
-        renderNearbyPins();
-
-        if (trailOnRef.current && activeSegmentRef.current) {
-          activeSegmentRef.current.geometry.coordinates.push([
-            longitude,
-            latitude,
-          ]);
-          mapRef.current.getSource("trail").setData(
-            mapRef.current.getSource("trail")._data
-          );
-        }
-
         if (followRef.current) {
           mapRef.current.easeTo({
             center: [longitude, latitude],
@@ -212,37 +192,6 @@ export default function MapPage() {
     );
   }, []);
 
-  /* ---------- PIN RENDERING ---------- */
-  const renderNearbyPins = () => {
-    renderedPinsRef.current.forEach((m) => m.remove());
-    renderedPinsRef.current = [];
-
-    if (!userPosRef.current || !mapRef.current) return;
-
-    const bounds = mapRef.current.getBounds();
-    const all = loadAllPins()[todayKey()] || [];
-
-    all.forEach((p) => {
-      const dist = haversine(userPosRef.current, {
-        lng: p.lngLat.lng,
-        lat: p.lngLat.lat,
-      });
-
-      if (
-        dist <= RADIUS_METERS &&
-        bounds.contains([p.lngLat.lng, p.lngLat.lat])
-      ) {
-        const marker = new mapboxgl.Marker({
-          element: createPin(p.color),
-        })
-          .setLngLat(p.lngLat)
-          .addTo(mapRef.current);
-
-        renderedPinsRef.current.push(marker);
-      }
-    });
-  };
-
   /* ---------- CONTROLS ---------- */
   const toggleFollow = () => {
     followRef.current = !followRef.current;
@@ -250,20 +199,6 @@ export default function MapPage() {
   };
 
   const toggleTrail = () => {
-    const src = mapRef.current.getSource("trail");
-    src.setData({ type: "FeatureCollection", features: [] });
-
-    if (!trailOnRef.current) {
-      const segment = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [] },
-      };
-      src._data.features.push(segment);
-      activeSegmentRef.current = segment;
-    } else {
-      activeSegmentRef.current = null;
-    }
-
     trailOnRef.current = !trailOnRef.current;
     setTrailOn(trailOnRef.current);
   };
@@ -301,33 +236,10 @@ export default function MapPage() {
       setShowSeverity(true);
     }
 
-    renderNearbyPins();
-
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
-  };
-
-  /* ---------- SAVE SEVERITY + NOTES ---------- */
-  const saveSeverity = () => {
-    if (!lastLogRef.current) return;
-
-    lastLogRef.current.severity = severity;
-    lastLogRef.current.notes = notes || null;
-
-    const all = loadAllPins();
-    const today = todayKey();
-
-    all[today] = all[today].map((p) =>
-      p.time === lastLogRef.current.time ? lastLogRef.current : p
-    );
-
-    saveAllPins(all);
-
-    setSeverity(5);
-    setNotes("");
-    setShowSeverity(false);
   };
 
   const severityPercent = (severity / 10) * 100;
@@ -336,9 +248,46 @@ export default function MapPage() {
     <div style={{ height: "100vh", width: "100vw", position: "relative" }}>
       <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
 
+      {/* Home */}
+      <div style={{ position: "fixed", top: 12, left: 12, zIndex: 50 }}>
+        <Link href="/" style={{ padding: 8, background: "white", borderRadius: 999 }}>
+          ← Home
+        </Link>
+      </div>
+
+      {/* Follow / Trail */}
+      <div style={{ position: "fixed", top: 12, right: 12, zIndex: 50 }}>
+        <button onClick={toggleFollow}>
+          {follow ? "Following" : "Free Look"}
+        </button>
+        <button onClick={toggleTrail}>
+          {trailOn ? "Trail On" : "Trail Off"}
+        </button>
+      </div>
+
+      {/* Log House */}
+      <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 50 }}>
+        <button onClick={armLogHouse}>
+          Log House
+        </button>
+      </div>
+
+      {/* Status Menu */}
+      {showStatus && (
+        <div style={{ position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)", background: "white", padding: 10, borderRadius: 12, zIndex: 100 }}>
+          {STATUS_OPTIONS.map((s) => (
+            <button key={s.label} onClick={() => savePin(s)}>
+              {s.label}
+            </button>
+          ))}
+          <button onClick={cancelLog}>Cancel</button>
+        </div>
+      )}
+
+      {/* Severity */}
       {showSeverity && (
-        <div style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "white", padding: 22, borderRadius: 18, width: 320, zIndex: 200 }}>
-          <div style={{ marginBottom: 10 }}>Roof Damage Severity</div>
+        <div style={{ position: "fixed", bottom: 140, left: "50%", transform: "translateX(-50%)", background: "white", padding: 20, borderRadius: 16, width: 320, zIndex: 200 }}>
+          <div>Roof Damage Severity</div>
 
           <input
             type="range"
@@ -360,7 +309,7 @@ export default function MapPage() {
           />
 
           <textarea
-            placeholder="Notes (optional)"
+            placeholder="Notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             style={{ width: "100%", height: 80, marginTop: 10 }}
