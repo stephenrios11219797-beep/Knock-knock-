@@ -95,7 +95,7 @@ export default function MapPage() {
         },
       });
 
-      setTimeout(renderNearbyPins, 300);
+      renderNearbyPins();
     });
 
     map.on("moveend", renderNearbyPins);
@@ -169,9 +169,6 @@ export default function MapPage() {
 
   /* ---------- PIN RENDERING ---------- */
   const renderNearbyPins = async () => {
-    renderedPinsRef.current.forEach((m) => m.remove());
-    renderedPinsRef.current = [];
-
     if (!userPosRef.current || !mapRef.current) return;
 
     const bounds = mapRef.current.getBounds();
@@ -183,8 +180,13 @@ export default function MapPage() {
         lat: p.lngLat.lat,
       });
 
-      if (dist <= RADIUS_METERS && bounds.contains([p.lngLat.lng, p.lngLat.lat])) {
+      if (
+        dist <= RADIUS_METERS &&
+        bounds.contains([p.lngLat.lng, p.lngLat.lat]) &&
+        !renderedPinsRef.current.find(m => m.pinId === p.time)
+      ) {
         const marker = await addPinToMap(mapRef.current, p, handleEditPin);
+        marker.pinId = p.time; // unique id to avoid duplicates
         renderedPinsRef.current.push(marker);
       }
     }
@@ -228,11 +230,10 @@ export default function MapPage() {
     setShowStatus(false);
   };
 
-  const savePin = async (status) => {
+  /* ---------- SAVE PIN ---------- */
+  const savePin = (status) => {
     const lngLat = pendingPinRef.current.getLngLat();
     pendingPinRef.current.remove();
-
-    const address = await fetchAddress(lngLat);
 
     const log = {
       lngLat,
@@ -241,22 +242,27 @@ export default function MapPage() {
       time: Date.now(),
       severity: null,
       notes: null,
-      address,
+      address: null,
     };
 
     savePinToStorage(log);
     lastLogRef.current = log;
 
-    if (status.label === "No Answer") {
-      setShowSeverity(true);
-    }
+    // Async fetch address with caching
+    fetchAddress(lngLat).then((addr) => {
+      log.address = addr;
+      saveAllPins(loadAllPins());
+      renderNearbyPins();
+    });
 
-    renderNearbyPins();
+    if (status.label === "No Answer") setShowSeverity(true);
 
     pendingPinRef.current = null;
     loggingRef.current = false;
     setLoggingMode(false);
     setShowStatus(false);
+
+    renderNearbyPins(); // immediate UI update
   };
 
   /* ---------- EDIT PIN ---------- */
